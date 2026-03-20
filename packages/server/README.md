@@ -4,12 +4,6 @@ The open source server that businesses self-host to expose their real-world serv
 
 When an AI agent needs to hire a plumber, book a cleaner, or commission any physical service — this is the server that lets a business be found and contacted.
 
-## Relationship to Google's UCP
-
-Google's Universal Commerce Protocol (UCP) lets agents buy products online. Inverse Claw lets agents hire people for physical tasks. They're complementary — a user could buy a dishwasher via UCP and hire someone to install it via Inverse Claw.
-
-Like UCP, Inverse Claw uses a `/.well-known/` endpoint for agent discovery.
-
 ## Quick Start (Docker)
 
 ```bash

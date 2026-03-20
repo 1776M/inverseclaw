@@ -1,0 +1,19 @@
+services:
+  - name: Oven Cleaning
+    description: >
+      Professional domestic oven cleaning including racks, glass, and hob.
+      We cover Greater Manchester and surrounding areas (M, SK, OL, WA postcodes).
+      Single ovens from £45, doubles from £65, range cookers from £85.
+      Usually available within 3 days of booking.
+    service_area:
+      country: GB
+      regions: [M, SK, OL, WA]
+
+  - name: Kitchen Deep Clean
+    description: >
+      Full kitchen deep clean including appliances, cupboard fronts, floor,
+      and surfaces. Takes 3-4 hours. From £120.
+      Greater Manchester area.
+    service_area:
+      country: GB
+      regions: [M, SK, OL]

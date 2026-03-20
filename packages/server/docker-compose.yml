@@ -1,0 +1,19 @@
+services:
+  inverse-claw-server:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+      - ./services.yaml:/app/services.yaml:ro
+    environment:
+      - DATABASE_URL=file:./data/inverseclaw.db
+      - BUSINESS_NAME=${BUSINESS_NAME:-My Business}
+      - CONTACT_EMAIL=${CONTACT_EMAIL:-me@example.com}
+      - CONTACT_PHONE=${CONTACT_PHONE:-}
+      - PRESENCE_URLS=${PRESENCE_URLS:-}
+      - INDEX_ENDPOINT=${INDEX_ENDPOINT:-}
+      - INDEX_API_KEY=${INDEX_API_KEY:-}
+      - AUTO_PUBLISH=${AUTO_PUBLISH:-false}
+      - PORT=3000
+    restart: unless-stopped

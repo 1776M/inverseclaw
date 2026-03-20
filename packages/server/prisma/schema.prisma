@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Task {
+  id             Int         @id @default(autoincrement())
+  taskId         String      @unique @map("task_id")
+  transactionId  String      @unique @map("transaction_id")
+  serviceName    String      @map("service_name")
+  details        String
+  contactName    String      @map("contact_name")
+  contactPhone   String?     @map("contact_phone")
+  contactEmail   String?     @map("contact_email")
+  status         String      @default("pending")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+  events         TaskEvent[]
+
+  @@map("tasks")
+}
+
+model TaskEvent {
+  id        Int      @id @default(autoincrement())
+  taskId    String   @map("task_id")
+  status    String
+  message   String?
+  createdAt DateTime @default(now()) @map("created_at")
+  task      Task     @relation(fields: [taskId], references: [taskId])
+
+  @@map("task_events")
+}

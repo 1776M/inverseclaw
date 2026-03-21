@@ -50,14 +50,18 @@ async function main(): Promise<void> {
         'USDC_WALLET_ADDRESS environment variable is required when any service accepts usdc_base deposits'
       );
     }
-    registerProvider(
-      new UsdcBaseDepositProvider(
-        config.usdcWalletAddress,
-        config.baseRpcUrl,
-        config.gbpUsdRate
-      )
+    const usdcProvider = new UsdcBaseDepositProvider(
+      config.usdcWalletAddress,
+      config.baseRpcUrl,
+      config.gbpUsdRate,
+      config.usdcEscrowAddress,
+      config.businessPrivateKey
     );
-    console.log('USDC (Base L2) deposit provider initialized');
+    registerProvider(usdcProvider);
+    console.log(
+      `USDC (Base L2) deposit provider initialized` +
+        (usdcProvider.escrowMode ? ' (escrow mode — deposits are refundable)' : ' (direct transfer mode — deposits are non-refundable)')
+    );
   }
 
   // Validate all service-referenced providers are registered

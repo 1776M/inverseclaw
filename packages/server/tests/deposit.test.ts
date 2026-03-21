@@ -44,11 +44,25 @@ vi.mock('viem', () => {
           },
         ],
       }),
+      waitForTransactionReceipt: vi.fn().mockResolvedValue({ status: 'success' }),
+    }),
+    createWalletClient: vi.fn().mockReturnValue({
+      writeContract: vi.fn().mockResolvedValue('0xmocktxhash'),
     }),
     http: vi.fn(),
     parseAbiItem: vi.fn(),
+    keccak256: vi.fn().mockReturnValue('0xmockhash'),
+    toHex: vi.fn().mockImplementation((v: string) => `0x${Buffer.from(v).toString('hex')}`),
+    encodeFunctionData: vi.fn().mockReturnValue('0x'),
   };
 });
+
+vi.mock('viem/accounts', () => ({
+  privateKeyToAccount: vi.fn().mockReturnValue({
+    address: '0xmockaccount',
+    signTransaction: vi.fn(),
+  }),
+}));
 
 vi.mock('viem/chains', () => ({
   base: { id: 8453, name: 'Base' },

@@ -25,7 +25,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** USDC deposits are direct transfers to the business wallet. The `release()` method does nothing. The documentation says "the hold releases automatically" but for USDC, funds go directly to the business. Refund depends entirely on the business's good will. This is misleading and could be a consumer protection issue.
 - **Fix:** Either (a) build an escrow smart contract on Base that holds funds until release/capture, or (b) be honest in the docs that USDC deposits are non-refundable booking fees, not holds. Option (b) is pragmatic for v1.
 - **Effort:** Large (escrow contract) or Small (honest docs)
-- **Status:** Open — needs design decision
+- **Status:** Fixed — escrow contract + provider escrow mode implemented
 
 ---
 
@@ -172,4 +172,5 @@ Identified 2026-03-21. Work through these before any public launch.
 | Issue | Date Fixed | Commit | Notes |
 |-------|-----------|--------|-------|
 | #1 Stripe confirmDeposit | 2026-03-21 | da78c6c | Now calls stripe.paymentIntents.retrieve() and checks status === 'requires_capture' |
-| #2 USDC tx replay + amount | 2026-03-21 | (see commit) | Added tx hash dedup (in-memory Set), amount check (>= 90% of expected), expected amount tracking per deposit |
+| #2 USDC tx replay + amount | 2026-03-21 | f4696f9 | Added tx hash dedup (in-memory Set), amount check (>= 90% of expected), expected amount tracking per deposit |
+| #3 USDC release no-op | 2026-03-21 | (see commit) | InverseClawEscrow contract + escrow mode in EvmUsdcProvider. Capture/release are real on-chain txs. Direct transfer mode kept as fallback with warning. |

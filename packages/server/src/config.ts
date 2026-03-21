@@ -117,6 +117,8 @@ export interface DepositConfig extends AppConfig {
   usdcWalletAddress?: string;
   baseRpcUrl?: string;
   gbpUsdRate?: number;
+  businessPrivateKey?: string;
+  usdcEscrowAddress?: string;
 }
 
 export function loadDepositConfig(): DepositConfig {
@@ -128,5 +130,7 @@ export function loadDepositConfig(): DepositConfig {
     usdcWalletAddress: process.env.USDC_WALLET_ADDRESS || undefined,
     baseRpcUrl: process.env.BASE_RPC_URL || undefined,
     gbpUsdRate: rateStr ? parseFloat(rateStr) : undefined,
+    businessPrivateKey: process.env.BUSINESS_PRIVATE_KEY || undefined,
+    usdcEscrowAddress: process.env.USDC_ESCROW_ADDRESS || undefined,
   };
 }

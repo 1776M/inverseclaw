@@ -1,7 +1,18 @@
-import { createPublicClient, http, type Address, type Chain } from 'viem';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  keccak256,
+  toHex,
+  encodeFunctionData,
+  type Address,
+  type Chain,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 import { base, mainnet, arbitrum, optimism, polygon } from 'viem/chains';
 import { randomBytes } from 'node:crypto';
 import type { DepositProvider, CreateDepositResult } from '../depositProvider.js';
+import { ESCROW_ABI, EscrowStatus } from '../escrowAbi.js';
 
 const USDC_DECIMALS = 6;
 
@@ -35,6 +46,11 @@ const DEFAULT_RPC_URLS: Record<number, string> = {
   [polygon.id]:  'https://polygon-rpc.com',
 };
 
+/** Canonical escrow contract addresses per chain (deployed by the project) */
+const ESCROW_ADDRESSES: Record<number, Address> = {
+  // Populated after deployment — leave empty until contracts are deployed
+};
+
 export interface EvmUsdcConfig {
   /** Chain ID (e.g. 8453 for Base, 1 for Ethereum, 42161 for Arbitrum) */
   chainId: number;
@@ -48,33 +64,42 @@ export interface EvmUsdcConfig {
   usdcAddress?: string;
   /** Provider type identifier (optional, auto-generated as usdc_{chain_name}) */
   providerType?: string;
+  /** Escrow contract address (optional, auto-detected for known chains once deployed) */
+  escrowAddress?: string;
+  /** Business private key for signing capture/release transactions (required for escrow mode) */
+  businessPrivateKey?: string;
 }
 
 /**
  * EVM USDC deposit provider.
  *
- * Works on any EVM chain with USDC. Pre-configured for Base, Ethereum,
- * Arbitrum, Optimism, and Polygon. Custom chains can be added by
- * providing the chain ID, USDC address, and RPC URL.
+ * Two modes:
+ * - **Escrow mode** (recommended): Deposits go to the InverseClawEscrow contract.
+ *   Fully refundable. Capture/release are real on-chain transactions.
+ *   Requires `escrowAddress` and `businessPrivateKey`.
  *
- * Usage:
- *   new EvmUsdcProvider({ chainId: 8453, walletAddress: '0x...' })  // Base
- *   new EvmUsdcProvider({ chainId: 42161, walletAddress: '0x...' }) // Arbitrum
- *   new EvmUsdcProvider({ chainId: 1, walletAddress: '0x...' })     // Ethereum
+ * - **Direct transfer mode** (fallback): Deposits go straight to the business wallet.
+ *   Non-refundable. Capture/release are no-ops. Used when escrow is not configured.
+ *   A warning is logged at startup.
  */
 export class EvmUsdcProvider implements DepositProvider {
   readonly type: string;
+  readonly escrowMode: boolean;
   private walletAddress: Address;
   private rpcUrl: string;
   private gbpUsdRate: number;
   private usdcAddress: Address;
   private chainId: number;
   private chain: Chain;
+  private escrowAddress: Address | null;
+  private businessPrivateKey: string | null;
 
   /** Track expected USDC amounts per deposit reference */
   private expectedAmounts = new Map<string, bigint>();
   /** Track used tx hashes to prevent replay attacks */
   private usedTxHashes = new Set<string>();
+  /** Map deposit reference string → bytes32 hash (for escrow contract calls) */
+  private depositIdToBytes32 = new Map<string, `0x${string}`>();
 
   constructor(config: EvmUsdcConfig) {
     this.chainId = config.chainId;
@@ -104,6 +129,21 @@ export class EvmUsdcProvider implements DepositProvider {
 
     // Resolve provider type name
     this.type = config.providerType ?? `usdc_${(this.chain.name ?? String(config.chainId)).toLowerCase().replace(/\s+/g, '_')}`;
+
+    // Resolve escrow config
+    const escrowAddr = config.escrowAddress ?? ESCROW_ADDRESSES[config.chainId];
+    this.escrowAddress = escrowAddr ? (escrowAddr as Address) : null;
+    this.businessPrivateKey = config.businessPrivateKey ?? null;
+
+    // Determine mode
+    this.escrowMode = !!(this.escrowAddress && this.businessPrivateKey);
+
+    if (!this.escrowMode) {
+      console.warn(
+        `[${this.type}] Running in DIRECT TRANSFER mode (no escrow). ` +
+          'Deposits are non-refundable. Set BUSINESS_PRIVATE_KEY and escrow address for refundable deposits.'
+      );
+    }
   }
 
   async createDeposit(params: {
@@ -120,10 +160,33 @@ export class EvmUsdcProvider implements DepositProvider {
     const minimumAmount = BigInt(Math.floor(expectedRaw * 0.9));
     this.expectedAmounts.set(depositReference, minimumAmount);
 
+    if (this.escrowMode) {
+      // Compute bytes32 deposit ID for the contract
+      const depositIdBytes32 = keccak256(toHex(depositReference));
+      this.depositIdToBytes32.set(depositReference, depositIdBytes32);
+
+      return {
+        depositId: depositReference,
+        providerType: this.type,
+        clientData: {
+          mode: 'escrow',
+          escrow_address: this.escrowAddress,
+          business_wallet: this.walletAddress,
+          amount_usdc: amountUsdc,
+          chain_id: this.chainId,
+          deposit_reference: depositReference,
+          deposit_id_bytes32: depositIdBytes32,
+          token_address: this.usdcAddress,
+        },
+      };
+    }
+
+    // Direct transfer mode (fallback)
     return {
       depositId: depositReference,
       providerType: this.type,
       clientData: {
+        mode: 'direct_transfer',
         wallet_address: this.walletAddress,
         amount_usdc: amountUsdc,
         chain_id: this.chainId,
@@ -159,36 +222,121 @@ export class EvmUsdcProvider implements DepositProvider {
 
       if (receipt.status !== 'success') return false;
 
-      // Check for USDC Transfer event to our wallet with sufficient amount
-      for (const log of receipt.logs) {
-        if (log.address.toLowerCase() !== this.usdcAddress.toLowerCase()) continue;
-
-        // ERC20 Transfer: topics[2] = to address, data = value
-        if (!log.topics[2]) continue;
-        const toAddress = ('0x' + log.topics[2].slice(26)).toLowerCase();
-        if (toAddress !== this.walletAddress.toLowerCase()) continue;
-
-        const value = BigInt(log.data);
-        if (value >= minimumAmount && value > 0n) {
-          // Mark tx hash as used and clean up expected amount
-          this.usedTxHashes.add(normalizedHash);
-          this.expectedAmounts.delete(depositId);
-          return true;
-        }
+      if (this.escrowMode) {
+        return this.confirmEscrowDeposit(receipt.logs, depositId, minimumAmount, normalizedHash);
       }
 
-      return false;
+      return this.confirmDirectTransfer(receipt.logs, depositId, minimumAmount, normalizedHash);
     } catch {
       return false;
     }
   }
 
-  async capture(_depositId: string): Promise<void> {
-    // No-op: funds were sent directly to the business wallet.
+  async capture(depositId: string): Promise<void> {
+    if (!this.escrowMode) return; // No-op in direct transfer mode
+
+    const depositIdBytes32 = this.depositIdToBytes32.get(depositId);
+    if (!depositIdBytes32) throw new Error(`Unknown deposit: ${depositId}`);
+
+    await this.sendEscrowTransaction('capture', depositIdBytes32);
   }
 
-  async release(_depositId: string): Promise<void> {
-    // Direct transfer model — refund is at the business's discretion.
+  async release(depositId: string): Promise<void> {
+    if (!this.escrowMode) return; // No-op in direct transfer mode
+
+    const depositIdBytes32 = this.depositIdToBytes32.get(depositId);
+    if (!depositIdBytes32) throw new Error(`Unknown deposit: ${depositId}`);
+
+    await this.sendEscrowTransaction('release', depositIdBytes32);
+  }
+
+  // --- Private helpers ---
+
+  /** Confirm a deposit made via the escrow contract (look for Deposited event) */
+  private confirmEscrowDeposit(
+    logs: readonly any[],
+    depositId: string,
+    minimumAmount: bigint,
+    normalizedHash: string
+  ): boolean {
+    const depositIdBytes32 = this.depositIdToBytes32.get(depositId);
+    if (!depositIdBytes32) return false;
+
+    // Look for the Deposited event from the escrow contract
+    // Deposited(bytes32 indexed depositId, address indexed depositor, address indexed businessWallet, uint256 amount, uint256 expiresAt)
+    const escrowAddr = this.escrowAddress!.toLowerCase();
+
+    for (const log of logs) {
+      if (log.address.toLowerCase() !== escrowAddr) continue;
+
+      // topics[1] = depositId (indexed bytes32)
+      if (!log.topics[1] || log.topics[1].toLowerCase() !== depositIdBytes32.toLowerCase()) continue;
+
+      // Decode amount from data (first 32 bytes = amount, next 32 bytes = expiresAt)
+      const amount = BigInt('0x' + log.data.slice(2, 66));
+      if (amount >= minimumAmount && amount > 0n) {
+        this.usedTxHashes.add(normalizedHash);
+        this.expectedAmounts.delete(depositId);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /** Confirm a direct USDC transfer to the business wallet */
+  private confirmDirectTransfer(
+    logs: readonly any[],
+    depositId: string,
+    minimumAmount: bigint,
+    normalizedHash: string
+  ): boolean {
+    for (const log of logs) {
+      if (log.address.toLowerCase() !== this.usdcAddress.toLowerCase()) continue;
+
+      // ERC20 Transfer: topics[2] = to address, data = value
+      if (!log.topics[2]) continue;
+      const toAddress = ('0x' + log.topics[2].slice(26)).toLowerCase();
+      if (toAddress !== this.walletAddress.toLowerCase()) continue;
+
+      const value = BigInt(log.data);
+      if (value >= minimumAmount && value > 0n) {
+        this.usedTxHashes.add(normalizedHash);
+        this.expectedAmounts.delete(depositId);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /** Send a capture or release transaction to the escrow contract */
+  private async sendEscrowTransaction(
+    method: 'capture' | 'release',
+    depositIdBytes32: `0x${string}`
+  ): Promise<void> {
+    const account = privateKeyToAccount(this.businessPrivateKey! as `0x${string}`);
+
+    const walletClient = createWalletClient({
+      account,
+      chain: this.chain,
+      transport: http(this.rpcUrl),
+    });
+
+    const hash = await walletClient.writeContract({
+      address: this.escrowAddress!,
+      abi: ESCROW_ABI,
+      functionName: method,
+      args: [depositIdBytes32],
+    });
+
+    // Wait for confirmation
+    const publicClient = createPublicClient({
+      chain: this.chain,
+      transport: http(this.rpcUrl),
+    });
+
+    await publicClient.waitForTransactionReceipt({ hash });
   }
 
   private penceToUsdc(pence: number): string {
@@ -203,13 +351,21 @@ export class EvmUsdcProvider implements DepositProvider {
  * Kept for backward compatibility with existing config.
  */
 export class UsdcBaseDepositProvider extends EvmUsdcProvider {
-  constructor(walletAddress: string, rpcUrl?: string, gbpUsdRate?: number) {
+  constructor(
+    walletAddress: string,
+    rpcUrl?: string,
+    gbpUsdRate?: number,
+    escrowAddress?: string,
+    businessPrivateKey?: string
+  ) {
     super({
       chainId: base.id,
       walletAddress,
       rpcUrl,
       gbpUsdRate,
       providerType: 'usdc_base',
+      escrowAddress,
+      businessPrivateKey,
     });
   }
 }

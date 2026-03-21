@@ -107,8 +107,7 @@ inverse-claw-server. It returns:
       "name": "Oven Cleaning",
       "description": "Professional domestic oven cleaning including racks, glass, and hob. Single ovens from £45, doubles from £65. Greater Manchester area.",
       "service_area": { "country": "GB", "regions": ["M", "SK", "OL", "WA"] },
-      "deposit_required": true,
-      "deposit_amount_pence": 1500
+      "deposit": { "amount_pence": 1500, "providers": ["stripe", "usdc_base"] }
     }
   ],
   "presence_urls": [
@@ -259,37 +258,44 @@ services:
     service_area:
       country: GB
       regions: [M, SK, OL, WA]
-    deposit_required: true        # optional, default false
-    deposit_amount_pence: 1500    # required if deposit_required is true
+    deposit:
+      amount_pence: 1500
+      providers: [stripe, usdc_base]    # business chooses which to accept
 ```
 
-The server requires `STRIPE_SECRET_KEY` in environment only if any service
-has `deposit_required: true`. If no service requires a deposit, Stripe is
-not needed and the server works exactly as before.
+The server supports multiple deposit providers. Built-in: `stripe` (card
+pre-auth holds) and `usdc_base` (USDC on Base L2). Businesses set provider
+credentials via environment variables — only needed for the providers they
+accept. If no service has a `deposit` block, no payment dependencies are
+needed and the server works exactly as before.
+
+New providers can be added by implementing the `DepositProvider` interface
+in `src/depositProvider.ts`.
 
 ### Deposit Hold Lifecycle
 
 ```
 1. Agent submits task
    POST /tasks → returns task_id, transaction_id, status: "pending_deposit",
-                  stripe_client_secret (Stripe PaymentIntent client secret)
+                  deposit_providers: { stripe: {...}, usdc_base: {...} }
 
-2. Agent/MCP confirms the card hold on user's side
-   (uses stripe_client_secret with Stripe.js or the Stripe SDK)
+2. Agent picks a provider the customer can use and completes the deposit
+   (Stripe: card hold via Stripe.js. USDC: send tokens to business wallet.)
 
 3. Agent confirms deposit with server
-   POST /tasks/:task_id/deposit { payment_intent_id: "pi_..." }
+   POST /tasks/:task_id/deposit { provider: "stripe", payment_intent_id: "pi_..." }
+   or { provider: "usdc_base", tx_hash: "0x..." }
    → task transitions from "pending_deposit" to "pending"
 
 4. Business sees the task with deposit confirmed, proceeds as normal
    (accept → in_progress → completed)
 
 5a. Normal completion or business cancels:
-    Hold releases automatically (or business calls release endpoint)
+    Business releases the deposit
     POST /tasks/:task_id/deposit/release
 
 5b. Customer no-show:
-    Business captures the hold amount
+    Business captures the deposit
     POST /tasks/:task_id/deposit/capture
 ```
 
@@ -315,17 +321,20 @@ directly in `pending`, exactly as before. Existing behaviour is unchanged.
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| POST | `/tasks/:task_id/deposit` | None | Agent confirms deposit hold (sends `payment_intent_id`) |
-| POST | `/tasks/:task_id/deposit/capture` | Business API key | Business captures hold on no-show |
-| POST | `/tasks/:task_id/deposit/release` | Business API key | Business releases hold early |
+| POST | `/tasks/:task_id/deposit` | None | Agent confirms deposit (`provider` + proof) |
+| POST | `/tasks/:task_id/deposit/capture` | Business API key | Business captures deposit on no-show |
+| POST | `/tasks/:task_id/deposit/release` | Business API key | Business releases deposit |
 
-### Why Not Crypto Signatures?
+### Adding New Deposit Providers
 
-The Stripe hold replaces the need for cryptographic signatures. Signatures
-only prove "the same key signed both messages" — not who owns the key.
-OpenClaw instances are self-hosted and anonymous. A Stripe payment intent
-links to a real cardholder via banking KYC. See THINKING.md for the full
-rationale.
+The server uses a `DepositProvider` interface with a provider registry.
+To add a new provider (e.g. M-Pesa, PayPal):
+
+1. Implement the `DepositProvider` interface in `src/providers/`
+2. Register it in `src/index.ts`
+3. Businesses reference it by name in their `services.yaml`
+
+See `src/depositProvider.ts` for the interface definition.
 
 ---
 

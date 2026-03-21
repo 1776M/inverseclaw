@@ -36,7 +36,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** The `endpoint` field in the discovery manifest returns `http://localhost:3000`. Useless for any real deployment — agents reading this from a remote domain get a URL that points to nothing.
 - **Fix:** Add a `PUBLIC_URL` environment variable. Fall back to `http://localhost:${port}` only if not set.
 - **Effort:** Trivial
-- **Status:** Open
+- **Status:** Fixed
 
 ### #5 No deposit timeout / business cannot cancel pending_deposit
 - **Files:** `packages/server/src/schemas.ts`, `packages/server/src/depositRoutes.ts`
@@ -173,4 +173,5 @@ Identified 2026-03-21. Work through these before any public launch.
 |-------|-----------|--------|-------|
 | #1 Stripe confirmDeposit | 2026-03-21 | da78c6c | Now calls stripe.paymentIntents.retrieve() and checks status === 'requires_capture' |
 | #2 USDC tx replay + amount | 2026-03-21 | f4696f9 | Added tx hash dedup (in-memory Set), amount check (>= 90% of expected), expected amount tracking per deposit |
-| #3 USDC release no-op | 2026-03-21 | (see commit) | InverseClawEscrow contract + escrow mode in EvmUsdcProvider. Capture/release are real on-chain txs. Direct transfer mode kept as fallback with warning. |
+| #3 USDC release no-op | 2026-03-21 | 805eb0c | InverseClawEscrow contract + escrow mode in EvmUsdcProvider. Capture/release are real on-chain txs. Direct transfer mode kept as fallback with warning. |
+| #4 .well-known localhost | 2026-03-21 | (see commit) | Added PUBLIC_URL env var to AppConfig. Both routes.ts and depositRoutes.ts use it with localhost fallback. |

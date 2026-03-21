@@ -70,6 +70,7 @@ export interface AppConfig {
   indexEndpoint?: string;
   autoPublish: boolean;
   port: number;
+  publicUrl?: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -104,6 +105,7 @@ export function loadConfig(): AppConfig {
     indexEndpoint: process.env.INDEX_ENDPOINT || undefined,
     autoPublish: process.env.AUTO_PUBLISH === 'true',
     port: parseInt(process.env.PORT ?? '3000', 10),
+    publicUrl: process.env.PUBLIC_URL || undefined,
   };
 }
 

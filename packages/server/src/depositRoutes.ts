@@ -70,7 +70,7 @@ export function registerDepositRoutes(
       business_name: config.businessName,
       contact_email: config.contactEmail,
       contact_phone: config.contactPhone ?? null,
-      endpoint: `http://localhost:${config.port}`,
+      endpoint: config.publicUrl ?? `http://localhost:${config.port}`,
       services: services.map((s) => ({
         name: s.name,
         description: s.description,

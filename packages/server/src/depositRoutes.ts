@@ -20,6 +20,7 @@ import {
 import { generateTransactionId, generateTaskId } from './transaction.js';
 import { getProvider } from './depositProvider.js';
 import { PrismaClient } from '@prisma/client';
+import { timingSafeEqual } from 'node:crypto';
 import type { WebhookNotifier } from './webhooks.js';
 
 const PROTOCOL_VERSION = '1.0.0';
@@ -33,6 +34,11 @@ interface ErrorResponse {
 
 function errorResponse(error: string, code: string): ErrorResponse {
   return { error, code };
+}
+
+function safeKeyCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
 export function registerDepositRoutes(
@@ -273,7 +279,7 @@ export function registerDepositRoutes(
       }
 
       const providedKey = authHeader.slice(7);
-      if (providedKey !== config.businessApiKey) {
+      if (!safeKeyCompare(providedKey, config.businessApiKey)) {
         reply.status(401);
         return errorResponse('Invalid API key', 'UNAUTHORIZED');
       }
@@ -505,7 +511,7 @@ export function registerDepositRoutes(
         reply.status(401);
         return errorResponse('Missing or invalid Authorization header', 'UNAUTHORIZED');
       }
-      if (authHeader.slice(7) !== config.businessApiKey) {
+      if (!safeKeyCompare(authHeader.slice(7), config.businessApiKey)) {
         reply.status(401);
         return errorResponse('Invalid API key', 'UNAUTHORIZED');
       }
@@ -555,7 +561,7 @@ export function registerDepositRoutes(
         reply.status(401);
         return errorResponse('Missing or invalid Authorization header', 'UNAUTHORIZED');
       }
-      if (authHeader.slice(7) !== config.businessApiKey) {
+      if (!safeKeyCompare(authHeader.slice(7), config.businessApiKey)) {
         reply.status(401);
         return errorResponse('Invalid API key', 'UNAUTHORIZED');
       }
@@ -605,7 +611,7 @@ export function registerDepositRoutes(
         reply.status(401);
         return errorResponse('Missing or invalid Authorization header', 'UNAUTHORIZED');
       }
-      if (authHeader.slice(7) !== config.businessApiKey) {
+      if (!safeKeyCompare(authHeader.slice(7), config.businessApiKey)) {
         reply.status(401);
         return errorResponse('Invalid API key', 'UNAUTHORIZED');
       }

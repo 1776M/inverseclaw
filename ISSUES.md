@@ -95,7 +95,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** SQLite is single-writer, no connection pooling, no indexes beyond unique constraints. Fine for MVP, will break under concurrent load or when businesses have hundreds of tasks.
 - **Fix:** (a) Add indexes on `status`, `serviceName`, `createdAt`. (b) Document PostgreSQL as the production recommendation. (c) The Prisma schema already supports swapping the datasource.
 - **Effort:** Small (indexes) to Medium (PostgreSQL docs/testing)
-- **Status:** Open
+- **Status:** Fixed (indexes added)
 
 ### #13 GBP-to-USD rate is fixed at startup
 - **File:** `packages/server/src/providers/usdc.ts`
@@ -115,7 +115,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** `details` and `message` fields accept arbitrary length strings. Someone could send megabytes of data per request, filling the database and causing DoS.
 - **Fix:** Add `.max(5000)` (or similar) to `details` and `message` in the Zod schemas.
 - **Effort:** Trivial
-- **Status:** Open
+- **Status:** Fixed
 
 ### #16 Presence URLs as trust signals are gameable
 - **Problem:** A scammer can create a Facebook page, a cheap website, and a Checkatrade listing in hours. The system checks that the node_id appears on the URL but creating fake presence is trivial. Domain age is useful but can be obtained with expired domains.
@@ -133,14 +133,14 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** No CORS headers. Browser-based agents or future dashboards will be blocked. If CORS is opened wide, any webpage can submit tasks.
 - **Fix:** Add `@fastify/cors` with configurable allowed origins.
 - **Effort:** Small
-- **Status:** Open
+- **Status:** Fixed
 
 ### #19 Business API key stored in plain text / timing-vulnerable comparison
 - **File:** `packages/server/src/config.ts`, route handlers
 - **Problem:** API key stored in `data/node.json` unencrypted. Comparison uses `===` which is theoretically vulnerable to timing attacks.
 - **Fix:** (a) Use `crypto.timingSafeEqual` for key comparison. (b) Consider hashing the stored key (though this complicates first-boot display).
 - **Effort:** Small
-- **Status:** Open
+- **Status:** Fixed (timingSafeEqual)
 
 ### #20 No chain reorg protection for USDC
 - **File:** `packages/server/src/providers/usdc.ts`
@@ -181,4 +181,8 @@ Identified 2026-03-21. Work through these before any public launch.
 | #8 GDPR compliance | 2026-03-21 | 5c362a7 | DELETE /tasks/:id endpoint + Data Protection section in README. Business is data controller. |
 | #9 No notifications | 2026-03-21 | 5d18d0e | Webhook system: WEBHOOK_URL env var, fire-and-forget POST on task.created/task.updated/deposit.confirmed. |
 | #10 Race conditions | 2026-03-21 | fd51a9c | Optimistic locking via updateMany WHERE status = expected. Returns 409 CONCURRENT_MODIFICATION on conflict. |
-| #11 Research unenforceable | 2026-03-21 | (see commit) | Server-enforced: POST /tasks requires research object. Manifest includes research_required flag. 7 new tests. |
+| #11 Research unenforceable | 2026-03-21 | d70fd12 | Server-enforced: POST /tasks always requires research object. No config opt-out. 5 tests. |
+| #12 SQLite indexes | 2026-03-21 | (see commit) | Added indexes on status, serviceName, createdAt. |
+| #15 Max length fields | 2026-03-21 | (see commit) | Added .max() to all text fields in Zod schemas. |
+| #18 CORS | 2026-03-21 | (see commit) | @fastify/cors with CORS_ORIGIN env var (default: all origins). |
+| #19 Timing-safe key | 2026-03-21 | (see commit) | crypto.timingSafeEqual for all API key comparisons. |

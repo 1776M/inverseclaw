@@ -11,18 +11,18 @@ export const TaskStatus = z.enum([
 export type TaskStatus = z.infer<typeof TaskStatus>;
 
 export const ResearchBody = z.object({
-  urls_checked: z.array(z.string().url()).min(1, 'Must check at least one presence URL'),
-  summary: z.string().min(1, 'Research summary is required'),
+  urls_checked: z.array(z.string().url().max(500)).min(1, 'Must check at least one presence URL').max(20),
+  summary: z.string().min(1, 'Research summary is required').max(5000),
 });
 export type ResearchBody = z.infer<typeof ResearchBody>;
 
 export const CreateTaskBody = z.object({
-  service_name: z.string().min(1),
-  details: z.string().min(1),
+  service_name: z.string().min(1).max(200),
+  details: z.string().min(1).max(5000),
   contact: z.object({
-    name: z.string().min(1),
-    phone: z.string().optional(),
-    email: z.string().email().optional(),
+    name: z.string().min(1).max(200),
+    phone: z.string().max(50).optional(),
+    email: z.string().email().max(200).optional(),
   }),
   research: ResearchBody.optional(),
 });
@@ -30,7 +30,7 @@ export type CreateTaskBody = z.infer<typeof CreateTaskBody>;
 
 export const PushEventBody = z.object({
   status: TaskStatus.exclude(['pending']),
-  message: z.string().optional(),
+  message: z.string().max(2000).optional(),
 });
 export type PushEventBody = z.infer<typeof PushEventBody>;
 

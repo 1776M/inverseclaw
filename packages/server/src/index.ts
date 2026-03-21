@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { PrismaClient } from '@prisma/client';
 import { loadConfig } from './config.js';
@@ -92,6 +93,11 @@ async function main(): Promise<void> {
         options: { translateTime: 'HH:MM:ss', ignore: 'pid,hostname' },
       },
     },
+  });
+
+  // CORS — configurable via CORS_ORIGIN env var (default: all origins)
+  await app.register(cors, {
+    origin: process.env.CORS_ORIGIN || true,
   });
 
   // Rate limiting — protect against spam and abuse

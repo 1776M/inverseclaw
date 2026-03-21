@@ -27,6 +27,9 @@ model Task {
   updatedAt      DateTime    @updatedAt @map("updated_at")
   events         TaskEvent[]
 
+  @@index([status])
+  @@index([serviceName])
+  @@index([createdAt])
   @@map("tasks")
 }
 

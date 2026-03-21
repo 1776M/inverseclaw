@@ -4,6 +4,7 @@ import type { Service } from './services.js';
 import { CreateTaskBody, PushEventBody, isValidTransition } from './schemas.js';
 import { generateTransactionId, generateTaskId } from './transaction.js';
 import { PrismaClient } from '@prisma/client';
+import { timingSafeEqual } from 'node:crypto';
 import type { WebhookNotifier } from './webhooks.js';
 
 const PROTOCOL_VERSION = '1.0.0';
@@ -17,6 +18,11 @@ interface ErrorResponse {
 
 function errorResponse(error: string, code: string): ErrorResponse {
   return { error, code };
+}
+
+function safeKeyCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
 export function registerRoutes(
@@ -188,7 +194,7 @@ export function registerRoutes(
       }
 
       const providedKey = authHeader.slice(7);
-      if (providedKey !== config.businessApiKey) {
+      if (!safeKeyCompare(providedKey, config.businessApiKey)) {
         reply.status(401);
         return errorResponse('Invalid API key', 'UNAUTHORIZED');
       }
@@ -270,7 +276,7 @@ export function registerRoutes(
       }
 
       const providedKey = authHeader.slice(7);
-      if (providedKey !== config.businessApiKey) {
+      if (!safeKeyCompare(providedKey, config.businessApiKey)) {
         reply.status(401);
         return errorResponse('Invalid API key', 'UNAUTHORIZED');
       }

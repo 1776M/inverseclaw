@@ -297,19 +297,30 @@ export function registerDepositRoutes(
         );
       }
 
-      await prisma.$transaction([
-        prisma.taskEvent.create({
+      // Optimistic locking: only update if status hasn't changed since we read it
+      const updated = await prisma.$transaction(async (tx) => {
+        const result = await tx.task.updateMany({
+          where: { taskId: task_id, status: task.status },
+          data: { status: body.status },
+        });
+        if (result.count === 0) return false;
+        await tx.taskEvent.create({
           data: {
             taskId: task_id,
             status: body.status,
             message: body.message ?? null,
           },
-        }),
-        prisma.task.update({
-          where: { taskId: task_id },
-          data: { status: body.status },
-        }),
-      ]);
+        });
+        return true;
+      });
+
+      if (!updated) {
+        reply.status(409);
+        return errorResponse(
+          'Task status changed concurrently — retry the request',
+          'CONCURRENT_MODIFICATION'
+        );
+      }
 
       // If cancelling a pending_deposit task, void any created deposits
       if (task.status === 'pending_deposit' && body.status === 'cancelled' && task.depositInitData) {
@@ -434,24 +445,35 @@ export function registerDepositRoutes(
         return errorResponse('Deposit confirmation failed', 'DEPOSIT_NOT_CONFIRMED');
       }
 
-      await prisma.$transaction([
-        prisma.taskEvent.create({
-          data: {
-            taskId: task_id,
-            status: 'pending',
-            message: `Deposit confirmed via ${providerType} — task is now pending`,
-          },
-        }),
-        prisma.task.update({
-          where: { taskId: task_id },
+      // Optimistic locking: only update if still in pending_deposit
+      const depositUpdated = await prisma.$transaction(async (tx) => {
+        const result = await tx.task.updateMany({
+          where: { taskId: task_id, status: 'pending_deposit' },
           data: {
             status: 'pending',
             depositProvider: providerType,
             depositProviderId: depositId,
             depositStatus: 'held',
           },
-        }),
-      ]);
+        });
+        if (result.count === 0) return false;
+        await tx.taskEvent.create({
+          data: {
+            taskId: task_id,
+            status: 'pending',
+            message: `Deposit confirmed via ${providerType} — task is now pending`,
+          },
+        });
+        return true;
+      });
+
+      if (!depositUpdated) {
+        reply.status(409);
+        return errorResponse(
+          'Task status changed concurrently — retry the request',
+          'CONCURRENT_MODIFICATION'
+        );
+      }
 
       notify('deposit.confirmed', {
         task_id,

@@ -213,19 +213,30 @@ export function registerRoutes(
         );
       }
 
-      await prisma.$transaction([
-        prisma.taskEvent.create({
+      // Optimistic locking: only update if status hasn't changed since we read it
+      const updated = await prisma.$transaction(async (tx) => {
+        const result = await tx.task.updateMany({
+          where: { taskId: task_id, status: task.status },
+          data: { status: body.status },
+        });
+        if (result.count === 0) return false;
+        await tx.taskEvent.create({
           data: {
             taskId: task_id,
             status: body.status,
             message: body.message ?? null,
           },
-        }),
-        prisma.task.update({
-          where: { taskId: task_id },
-          data: { status: body.status },
-        }),
-      ]);
+        });
+        return true;
+      });
+
+      if (!updated) {
+        reply.status(409);
+        return errorResponse(
+          'Task status changed concurrently — retry the request',
+          'CONCURRENT_MODIFICATION'
+        );
+      }
 
       notify('task.updated', {
         task_id,

@@ -81,7 +81,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** State transitions use read-then-write without locking. Two concurrent requests could both read the same status, both pass validation, and both write — last write wins. Masked by SQLite's single-writer lock, but architecturally unsound and would break on PostgreSQL.
 - **Fix:** Use `UPDATE ... WHERE status = :expected_status` pattern (optimistic locking) instead of separate read + write.
 - **Effort:** Small
-- **Status:** Open
+- **Status:** Fixed
 
 ### #11 "Mandatory research" is unenforceable
 - **Files:** `ARCHITECTURE.md`, `THINKING.md`
@@ -179,4 +179,5 @@ Identified 2026-03-21. Work through these before any public launch.
 | #6 Auto-release on complete | 2026-03-21 | c1c9c96 | Deposits auto-release when task reaches completed or cancelled (after confirmation). Manual release returns 409 if already released. |
 | #7 Rate limiting | 2026-03-21 | 0ef3202 | @fastify/rate-limit: 100 req/min global, 10 req/min on POST /tasks per IP. |
 | #8 GDPR compliance | 2026-03-21 | 5c362a7 | DELETE /tasks/:id endpoint + Data Protection section in README. Business is data controller. |
-| #9 No notifications | 2026-03-21 | (see commit) | Webhook system: WEBHOOK_URL env var, fire-and-forget POST on task.created/task.updated/deposit.confirmed. |
+| #9 No notifications | 2026-03-21 | 5d18d0e | Webhook system: WEBHOOK_URL env var, fire-and-forget POST on task.created/task.updated/deposit.confirmed. |
+| #10 Race conditions | 2026-03-21 | (see commit) | Optimistic locking via updateMany WHERE status = expected. Returns 409 CONCURRENT_MODIFICATION on conflict. |

@@ -175,7 +175,10 @@ The node ID and API key persist across restarts in `data/node.json`. If you lose
 | `USDC_WALLET_ADDRESS` | Conditional | — | Your wallet address on Base L2. **Required only if any service lists `usdc_base` in its deposit providers.** |
 | `BASE_RPC_URL` | No | `https://mainnet.base.org` | Base L2 RPC endpoint for USDC transaction verification |
 | `GBP_USD_RATE` | No | `1.27` | GBP to USD conversion rate for USDC deposit amounts |
+| `PUBLIC_URL` | No | `http://localhost:3000` | Your server's public URL (e.g. `https://yourdomain.com`). Used in the `/.well-known/inverseclaw` manifest. **Set this in production.** |
 | `WEBHOOK_URL` | No | — | URL to receive POST notifications when tasks are created, updated, or deposits confirmed. Works with Slack, Zapier, Make, or any HTTP endpoint. |
+| `BUSINESS_PRIVATE_KEY` | Conditional | — | Private key for your USDC wallet. **Required for USDC escrow mode** (signing capture/release transactions). Not needed for Stripe or direct transfer mode. |
+| `USDC_ESCROW_ADDRESS` | No | Auto-detected | Override the escrow contract address for your chain. Usually auto-detected for known chains. |
 | `INDEX_ENDPOINT` | No | — | Inverse Claw Index URL for auto-registration |
 | `INDEX_API_KEY` | No | — | Write API key from index registration |
 | `AUTO_PUBLISH` | No | `false` | Set to `true` to auto-register with the index on startup |
@@ -316,16 +319,32 @@ If you reference a provider but forget its env var, the server will fail with a 
 
 #### Stripe vs USDC: key differences
 
-| | Stripe | USDC on Base |
+| | Stripe | USDC on Base (escrow mode) |
 |---|---|---|
-| **How it works** | Pre-auth hold on card (no charge) | Direct USDC transfer to your wallet |
-| **Release** | Automated — hold disappears | Business refunds manually (honor system) |
-| **Capture** | Automated — card is charged | No-op — funds already in your wallet |
+| **How it works** | Pre-auth hold on card (no charge) | USDC sent to escrow smart contract |
+| **Release** | Automated — hold disappears | Automated — escrow returns USDC to customer |
+| **Capture** | Automated — card is charged | Automated — escrow sends USDC to business |
+| **Auto-expiry** | 7 days (Stripe default) | 7 days (escrow contract default) |
 | **Identity** | Card links to real person via KYC | Wallet is pseudonymous |
 | **Availability** | ~47 countries | Worldwide (anyone with a wallet) |
 | **Best for** | Maximum trust (real identity) | Global reach (no banking required) |
 
 Both providers deter trolls (real money at stake) and confirm the customer has skin in the game. Stripe provides stronger identity proof; USDC provides global reach.
+
+#### USDC escrow mode vs direct transfer mode
+
+The USDC provider has two modes:
+
+**Escrow mode (recommended):** Deposits go to the InverseClawEscrow smart contract. The contract holds the USDC until the business calls release (refund to customer) or capture (take payment). If neither happens within 7 days, the deposit automatically returns to the customer. This is the recommended mode for production — deposits are fully refundable and trustless.
+
+To enable escrow mode, set:
+
+```bash
+BUSINESS_PRIVATE_KEY=0xYourPrivateKey   # needed to sign capture/release transactions
+USDC_ESCROW_ADDRESS=0xDeployedEscrowContract  # or use the canonical address (auto-detected once deployed)
+```
+
+**Direct transfer mode (fallback):** If escrow is not configured, deposits go straight to the business wallet. Release is not enforceable — refunds depend on the business's good will. The server logs a warning at startup: `"Running in DIRECT TRANSFER mode — deposits are non-refundable."` Use this only for testing or if escrow is not yet deployed on your chain.
 
 ### How Deposits Work (Step by Step)
 
@@ -353,18 +372,24 @@ Here's what happens when a customer's AI agent books a deposit-protected service
    (POST /tasks/:id/deposit/release)
 ```
 
+### Auto-release on completion
+
+When you push a task to `completed` or `cancelled` status, the server **automatically releases the deposit** — you don't need to call the release endpoint separately. The customer gets their money back (Stripe hold disappears, USDC escrow returns funds).
+
+If you need to capture a deposit (customer no-show), you must do that **before** completing or cancelling the task.
+
 ### Capturing vs Releasing a Deposit
 
-| Situation | What to do | API call |
-|-----------|-----------|----------|
-| Job completed normally | **Release** — hold disappears, customer is not charged | `POST /tasks/:id/deposit/release` |
-| You cancel the job | **Release** — not the customer's fault | `POST /tasks/:id/deposit/release` |
-| Customer no-shows | **Capture** — the hold amount is charged to their card | `POST /tasks/:id/deposit/capture` |
-| Customer cancels in time | **Release** — your cancellation policy determines what's fair | `POST /tasks/:id/deposit/release` |
+| Situation | What happens | Manual action needed? |
+|-----------|-------------|----------------------|
+| Job completed normally | Deposit auto-released | No — handled automatically |
+| You cancel the job | Deposit auto-released | No — handled automatically |
+| Customer no-shows | You capture the deposit | Yes — call `POST /tasks/:id/deposit/capture` |
+| Task stuck in pending_deposit | You cancel the task | Yes — call `POST /tasks/:id/events` with `status: "cancelled"`. Any created deposits are voided. |
 
-Both capture and release require your Business API Key (`Authorization: Bearer <your_key>`).
+Both capture and manual release require your Business API Key (`Authorization: Bearer <your_key>`).
 
-**Important:** Deposit holds expire after 7 days (Stripe's default for manual capture). If you don't capture or release within 7 days, the hold releases automatically.
+**Important:** Stripe deposit holds expire after 7 days. USDC escrow deposits expire after 7 days (auto-refund to customer). If you don't capture within 7 days, the deposit releases automatically.
 
 ### Services Without Deposits
 
@@ -846,11 +871,13 @@ pending ──> accepted ──> in_progress ──> completed
 
 ```
 pending_deposit ──> pending ──> accepted ──> in_progress ──> completed
-(card hold          (deposit      │              │
+(deposit            (deposit      │              │
  created)            confirmed)   ├──> declined  │
-                       │          └──> cancelled  └──> cancelled
-                       ├──> declined
-                       └──> cancelled
+  │                    │          └──> cancelled  └──> cancelled
+  │                    ├──> declined
+  └──> cancelled       └──> cancelled
+  (business cancels,
+   deposits voided)
 ```
 
 ### State Machine
@@ -859,7 +886,7 @@ Every status transition must follow valid paths. The server enforces this — in
 
 | From | Allowed Next States |
 |------|-------------------|
-| `pending_deposit` | `pending` (via deposit confirmation only) |
+| `pending_deposit` | `pending` (deposit confirmed), `cancelled` (business cancels) |
 | `pending` | `accepted`, `declined`, `cancelled` |
 | `accepted` | `in_progress`, `cancelled` |
 | `in_progress` | `completed`, `cancelled` |
@@ -940,8 +967,10 @@ packages/server/
     depositProvider.ts # Provider interface + registry (extensible)
     providers/
       stripe.ts        # Stripe deposit provider (card holds)
-      usdc.ts          # USDC on Base deposit provider (crypto)
+      usdc.ts          # USDC/EVM deposit provider (crypto escrow)
       index.ts         # Provider barrel exports
+    escrowAbi.ts       # InverseClawEscrow contract ABI
+    webhooks.ts        # Fire-and-forget webhook notifications
     transaction.ts     # Transaction and task ID generation
   prisma/
     schema.prisma      # Database schema (SQLite)
@@ -983,7 +1012,7 @@ npm run test:watch   # Run tests in watch mode (re-runs on file changes)
 | `deposit-schemas.test.ts` | 13 | Deposit state machine, ConfirmDepositBody validation |
 | `deposit-services.test.ts` | 9 | Extended service schema with deposit fields |
 
-**Total: 123 tests**
+**Total: 116 tests**
 
 Deposit tests use a mocked Stripe client — no real Stripe API calls are made during testing.
 
@@ -1016,13 +1045,30 @@ export CONTACT_EMAIL="hello@mybusiness.co.uk"
 node dist/index.js
 ```
 
-### Reverse proxy
+### Production checklist
 
-In production, put the server behind a reverse proxy (nginx, Caddy, Cloudflare Tunnel) with HTTPS. The `/.well-known/inverseclaw` endpoint must be accessible on your public domain for agents to discover you:
+Before going live, make sure you:
 
-```
-https://yourdomain.com/.well-known/inverseclaw
-```
+- [ ] **Set `PUBLIC_URL`** to your public domain (e.g. `https://yourdomain.com`). Without this, the discovery manifest returns `localhost`.
+- [ ] **Put the server behind HTTPS** using a reverse proxy (nginx, Caddy, Cloudflare Tunnel). API keys and customer PII must not be sent in cleartext. The `/.well-known/inverseclaw` endpoint must be accessible at `https://yourdomain.com/.well-known/inverseclaw`.
+- [ ] **Keep your Business API Key secret.** It's stored in `data/node.json`. Don't commit it to git or expose it publicly.
+- [ ] **Set up webhooks** (`WEBHOOK_URL`) so you know when tasks arrive. Without this, you have no way to see incoming bookings.
+- [ ] **Use Stripe live keys** (`sk_live_...`) not test keys.
+- [ ] **Use USDC escrow mode** if accepting crypto deposits (set `BUSINESS_PRIVATE_KEY`). Direct transfer mode is non-refundable.
+- [ ] **Back up `data/`** — this contains your node identity and database.
+
+---
+
+## Rate Limiting
+
+All endpoints are rate limited to protect against spam and abuse:
+
+| Endpoint | Limit |
+|----------|-------|
+| `POST /tasks` | 10 requests per minute per IP |
+| All other endpoints | 100 requests per minute per IP |
+
+When the limit is exceeded, the server returns `429 Too Many Requests`. Rate limiting uses the client IP address as the key.
 
 ---
 
@@ -1103,6 +1149,26 @@ WEBHOOK_URL=https://yourdashboard.com/api/inverseclaw-webhook
   }
 }
 ```
+
+### Common integrations
+
+**Slack notifications:**
+1. Create a [Slack Incoming Webhook](https://api.slack.com/messaging/webhooks) for your channel
+2. Set `WEBHOOK_URL` to the Slack webhook URL
+3. You'll get a message in your channel every time a task is created or updated
+
+**Email alerts via Zapier:**
+1. Create a Zapier Zap with "Webhooks by Zapier" as the trigger (Catch Hook)
+2. Set `WEBHOOK_URL` to the Zapier webhook URL
+3. Add an email action — Zapier sends you an email with the task details on every event
+
+**Email alerts via Make (Integromat):**
+1. Create a scenario with "Webhooks" → "Custom webhook" as the trigger
+2. Set `WEBHOOK_URL` to the Make webhook URL
+3. Add a "Send an Email" module
+
+**Custom dashboard:**
+Point `WEBHOOK_URL` to your own HTTP endpoint. Parse the JSON payload and display tasks however you want.
 
 ### Behaviour
 

@@ -22,40 +22,6 @@ Inverse Claw is the bridge.
 
 ---
 
-## Google's UCP and Where Inverse Claw Fits
-
-In January 2026, Google launched the Universal Commerce Protocol (UCP) — an
-open standard for agentic commerce, co-developed with Shopify, Stripe, Walmart,
-Target, Mastercard, Visa, and 20+ other partners.
-
-UCP solves agent-driven commerce for **online retail**: product discovery, cart
-management, checkout, order tracking. It uses a `/.well-known/ucp` manifest on
-merchant domains so agents can auto-discover what a business sells and how to
-buy it.
-
-**UCP does not cover real-world services.** A plumber doesn't have a checkout
-flow. An oven cleaner doesn't have a SKU. There is no "add to cart" for someone
-coming to your house.
-
-This is exactly the gap Inverse Claw fills:
-
-| | UCP | Inverse Claw |
-|---|---|---|
-| **What** | Buy products online | Hire someone for a physical task |
-| **Businesses** | Retailers (Walmart, Shopify stores) | Service businesses (plumbers, cleaners) |
-| **Payment** | In-protocol (AP2, tokenised) | Offline (cash, bank transfer, invoice) |
-| **Discovery** | `/.well-known/ucp` on domain | `/.well-known/inverseclaw` on domain + central index |
-| **Task model** | Cart → Checkout → Order → Delivery | Request → Accept → In progress → Complete |
-
-UCP validates the thesis that agents need standardised protocols to transact
-with businesses. Inverse Claw extends that thesis to the physical world.
-
-We adopt UCP's `/.well-known/` convention for domain-level discovery. A business
-running inverse-claw-server automatically serves a manifest at
-`/.well-known/inverseclaw` that any agent can read directly.
-
----
-
 ## What We Rejected and Why
 
 ### Rejected: TaskRabbit / marketplace clone
@@ -87,7 +53,7 @@ component. Rejected because:
 - Discovery problem — how does an agent find providers?
 - Cold start problem — no supply, no demand, no way to bootstrap
 - Trust problem — no signals for agents to evaluate providers
-- The index is precisely what has monetisable value
+- The index is precisely what has value
 
 Note: The `/.well-known/inverseclaw` discovery mechanism partially addresses
 the pure P2P case — an agent that already knows a business's domain can discover
@@ -158,19 +124,18 @@ The clean structure emerged from separating two things that had been conflated:
 **The index** (proprietary, we host) handles:
 - Discovery — which businesses offer what, where
 - Trust signals — is this business real?
-- The monetisable asset
+- The core asset
 
 This mirrors how the web works. HTTP is the open protocol. Google is the
 proprietary index. Nobody owns HTTP. Google is worth $2 trillion.
 
-UCP follows the same structural logic — open protocol, with Google's commerce
-infrastructure as the discovery layer. We're doing the same for services.
+This mirrors how the web works — open protocol, proprietary discovery layer.
 
 ---
 
 ## Two Discovery Paths
 
-Following UCP's lead, Inverse Claw supports two discovery mechanisms:
+Inverse Claw supports two discovery mechanisms:
 
 **1. Central index (primary)**
 Agent searches the index: "find me an oven cleaner in Manchester."
@@ -401,25 +366,9 @@ with their workers is theirs. We have no visibility into it.
 
 ---
 
-## Monetisation Path
-
-**Now:** Onboarding fees (£200-500 per business setup)
-
-**Near term:**
-- Index subscription for businesses (£50-200/month to be listed)
-- Subcontracted onboarding (collect fee, pay subcontractor)
-
-**Later:**
-- Enterprise features (analytics, audit logs)
-- White-label protocol for specific verticals
-- Sell the index (value comes from: provider count, usage data,
-  being the default discovery layer for agent-callable real-world services)
-
----
-
 ## The One-Line Pitch
 
-UCP is how agents buy things. Inverse Claw is how agents hire people.
+Inverse Claw is how AI agents hire people for real-world tasks.
 
 ---
 

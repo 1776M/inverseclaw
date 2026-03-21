@@ -55,16 +55,15 @@
                          (plumber arrives, oven cleaned, etc.)
 ```
 
-When a service requires a deposit hold, the MCP also interacts with
-Stripe to confirm a pre-auth hold on the user's card before the task
-moves from `pending_deposit` to `pending`.
+When a service requires a deposit, the MCP handles deposit confirmation
+on the customer's side (Stripe card hold or USDC escrow payment) before
+the task moves from `pending_deposit` to `pending`.
 
 ---
 
 ## Two Discovery Paths
 
-Inverse Claw supports two ways for agents to find services, following the
-convention established by Google's Universal Commerce Protocol (UCP).
+Inverse Claw supports two ways for agents to find services.
 
 ### Path 1: Central Index (primary)
 
@@ -75,7 +74,7 @@ Agent → GET index.inverseclaw.io/search?q=oven+cleaning&location=M1
       ← Returns matching nodes with descriptions, contact info, trust signals
 ```
 
-This is the primary discovery mechanism and the monetisable asset.
+This is the primary discovery mechanism.
 
 ### Path 2: Direct Domain Discovery (secondary)
 
@@ -87,8 +86,8 @@ Agent → GET cleanright.co.uk/.well-known/inverseclaw
       ← Returns service manifest: node_id, business name, services, contact
 ```
 
-This follows UCP's `/.well-known/ucp` convention. Any agent that knows a
-domain can discover its Inverse Claw services without touching the index.
+Any agent that knows a domain can discover its Inverse Claw services
+without touching the index.
 
 The `/.well-known/inverseclaw` endpoint is served automatically by
 inverse-claw-server. It returns:
@@ -133,12 +132,16 @@ Responsibilities:
 - Allow business to push task status updates
 - Generate unique transaction IDs
 - Register with / update the index automatically
-- Optionally manage Stripe deposit hold lifecycle (create hold, confirm, release, capture)
+- Optionally manage deposit lifecycle via pluggable providers (Stripe card holds, USDC escrow, etc.)
+- Auto-release deposits on task completion or business cancellation
+- Fire-and-forget webhook notifications on task events (if configured)
+- Rate limit all endpoints (100 req/min global, 10 req/min on task creation)
+- Allow business to delete task data for GDPR compliance
 
 Does NOT:
 - Handle payments (payment is offline between business and customer)
-  Note: the optional Stripe deposit hold is not payment for the service —
-  it is a pre-auth hold for anti-troll and proof of agreement that releases
+  Note: the optional deposit is not payment for the service — it is a
+  small hold/escrow for anti-troll and proof of agreement that auto-releases
   on normal completion.
 - Communicate with other nodes
 - Handle disputes
@@ -305,7 +308,7 @@ When a service has `deposit_required: true`, the task starts in
 `pending_deposit` instead of `pending`:
 
 ```
-pending_deposit → [pending]           (deposit confirmed by agent)
+pending_deposit → [pending, cancelled] (deposit confirmed, or business cancels)
 pending         → [accepted, declined, cancelled]
 accepted        → [in_progress, cancelled]
 in_progress     → [completed, cancelled]
@@ -505,49 +508,10 @@ clawhub install inverseclaw/inverse-claw
 
 ---
 
-## Relationship to UCP
-
-Google's Universal Commerce Protocol (UCP) and Inverse Claw occupy
-complementary positions in the agentic commerce stack:
-
-```
-┌─────────────────────────────────────────────┐
-│              AI AGENT (e.g. OpenClaw)        │
-│                                              │
-│  ┌──────────────┐    ┌───────────────────┐  │
-│  │  UCP client   │    │ inverse-claw-mcp  │  │
-│  │  (buy stuff)  │    │ (hire people)     │  │
-│  └──────┬───────┘    └──────┬────────────┘  │
-└─────────┼───────────────────┼───────────────┘
-          │                   │
-          ▼                   ▼
-   Online retailers     Local service
-   (Shopify, Amazon)    businesses
-   Products, checkout   Services, agreement
-   /.well-known/ucp     /.well-known/inverseclaw
-```
-
-Both protocols:
-- Use `/.well-known/` for domain-level discovery
-- Support MCP bindings for agent integration
-- Keep the merchant/business as the record owner
-- Are transport-agnostic (REST/JSON)
-
-They differ in:
-- UCP handles payment in-protocol; Inverse Claw leaves payment offline
-- UCP models products and carts; Inverse Claw models services and tasks
-- UCP targets online retail; Inverse Claw targets physical services
-
-An agent with both installed can seamlessly shop for products and hire
-service providers in a single conversation.
-
----
-
 ## What This Is Not
 
-- Not a marketplace (no escrow, no seller accounts, no reviews system)
+- Not a marketplace (no seller accounts, no reviews system)
 - Not a job board (services, not gigs)
 - Not a payment processor (payment is offline between business and customer)
 - Not a dispute arbitrator (protocol surfaces contact details, that's it)
 - Not a verification service (trust signals are informational, not guarantees)
-- Not a competitor to UCP (complementary — services vs products)

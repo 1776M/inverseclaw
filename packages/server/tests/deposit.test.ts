@@ -48,6 +48,10 @@ vi.mock('viem', () => {
 
 vi.mock('viem/chains', () => ({
   base: { id: 8453, name: 'Base' },
+  mainnet: { id: 1, name: 'Ethereum' },
+  arbitrum: { id: 42161, name: 'Arbitrum One' },
+  optimism: { id: 10, name: 'OP Mainnet' },
+  polygon: { id: 137, name: 'Polygon' },
 }));
 
 import Fastify from 'fastify';

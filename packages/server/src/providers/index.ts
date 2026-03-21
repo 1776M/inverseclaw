@@ -1,2 +1,3 @@
 export { StripeDepositProvider } from './stripe.js';
-export { UsdcBaseDepositProvider } from './usdc.js';
+export { EvmUsdcProvider, UsdcBaseDepositProvider } from './usdc.js';
+export type { EvmUsdcConfig } from './usdc.js';

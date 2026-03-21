@@ -43,7 +43,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** Tasks in `pending_deposit` sit there forever. The state machine only allows `pending_deposit → pending`. The business cannot decline or cancel a task stuck in `pending_deposit`. Stripe PaymentIntents pile up on the business's account with no cleanup.
 - **Fix:** (a) Add `pending_deposit → cancelled` to the state machine. (b) Add a configurable timeout (e.g. 30 minutes) after which `pending_deposit` tasks auto-cancel. (c) On cancellation, void any Stripe PaymentIntent.
 - **Effort:** Small-Medium
-- **Status:** Open
+- **Status:** Fixed (state machine + cleanup). Timeout/auto-cancel is a future enhancement.
 
 ### #6 No auto-release of deposit on task completion
 - **File:** `packages/server/src/depositRoutes.ts`
@@ -174,4 +174,5 @@ Identified 2026-03-21. Work through these before any public launch.
 | #1 Stripe confirmDeposit | 2026-03-21 | da78c6c | Now calls stripe.paymentIntents.retrieve() and checks status === 'requires_capture' |
 | #2 USDC tx replay + amount | 2026-03-21 | f4696f9 | Added tx hash dedup (in-memory Set), amount check (>= 90% of expected), expected amount tracking per deposit |
 | #3 USDC release no-op | 2026-03-21 | 805eb0c | InverseClawEscrow contract + escrow mode in EvmUsdcProvider. Capture/release are real on-chain txs. Direct transfer mode kept as fallback with warning. |
-| #4 .well-known localhost | 2026-03-21 | (see commit) | Added PUBLIC_URL env var to AppConfig. Both routes.ts and depositRoutes.ts use it with localhost fallback. |
+| #4 .well-known localhost | 2026-03-21 | 8e16c39 | Added PUBLIC_URL env var to AppConfig. Both routes.ts and depositRoutes.ts use it with localhost fallback. |
+| #5 pending_deposit cancel | 2026-03-21 | (see commit) | Added pending_deposit → cancelled transition. Cancelling voids provider deposits (best effort). 3 new tests. |

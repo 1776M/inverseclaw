@@ -290,6 +290,23 @@ export function registerDepositRoutes(
         }),
       ]);
 
+      // If cancelling a pending_deposit task, void any created deposits
+      if (task.status === 'pending_deposit' && body.status === 'cancelled' && task.depositInitData) {
+        try {
+          const initData: Record<string, string> = JSON.parse(task.depositInitData);
+          for (const [providerType, depositId] of Object.entries(initData)) {
+            try {
+              const provider = getProvider(providerType);
+              await provider.release(depositId);
+            } catch {
+              // Best effort — provider may not support voiding unredeemed deposits
+            }
+          }
+        } catch {
+          // Ignore parse errors on cleanup
+        }
+      }
+
       return { updated: true };
     }
   );

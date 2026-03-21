@@ -486,6 +486,44 @@ describe('Deposit auth checks', () => {
   });
 });
 
+describe('Cancel pending_deposit task', () => {
+  let taskId: string;
+
+  it('should create a deposit task', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      payload: {
+        service_name: 'Oven Cleaning',
+        details: 'Test cancel',
+        contact: { name: 'Zara' },
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    taskId = res.json().task_id;
+    expect(res.json().status).toBe('pending_deposit');
+  });
+
+  it('business should be able to cancel a pending_deposit task', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/tasks/${taskId}/events`,
+      headers: { authorization: `Bearer ${TEST_CONFIG.businessApiKey}` },
+      payload: { status: 'cancelled', message: 'Deposit never confirmed, cleaning up' },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('task should show as cancelled', async () => {
+    const res = await app.inject({ method: 'GET', url: `/tasks/${taskId}` });
+    const body = res.json();
+    expect(body.status).toBe('cancelled');
+    expect(body.events).toHaveLength(2);
+    expect(body.events[0].status).toBe('pending_deposit');
+    expect(body.events[1].status).toBe('cancelled');
+  });
+});
+
 describe('GET /services (provider-agnostic)', () => {
   it('should show deposit config with providers array', async () => {
     const res = await app.inject({ method: 'GET', url: '/services' });

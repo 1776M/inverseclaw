@@ -59,7 +59,7 @@ export const ConfirmDepositBody = z.object({
 export type ConfirmDepositBody = z.infer<typeof ConfirmDepositBody>;
 
 const DEPOSIT_TRANSITIONS: Record<string, string[]> = {
-  pending_deposit: ['pending'],
+  pending_deposit: ['pending', 'cancelled'],
 };
 
 export function isValidDepositTransition(from: string, to: string): boolean {

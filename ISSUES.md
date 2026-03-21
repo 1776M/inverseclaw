@@ -11,7 +11,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** `confirmDeposit()` just checks the agent echoed back the same `payment_intent_id`. It never calls the Stripe API to verify the PaymentIntent status is actually `requires_capture` (i.e. the card hold succeeded). Any agent can bypass the deposit by echoing the ID back without the customer's card ever being authorized.
 - **Fix:** Call `stripe.paymentIntents.retrieve(depositId)` and check `status === 'requires_capture'`.
 - **Effort:** Small
-- **Status:** Open
+- **Status:** Fixed
 
 ### #2 USDC tx_hash replay + no amount check
 - **File:** `packages/server/src/providers/usdc.ts`
@@ -171,4 +171,4 @@ Identified 2026-03-21. Work through these before any public launch.
 
 | Issue | Date Fixed | Commit | Notes |
 |-------|-----------|--------|-------|
-| — | — | — | — |
+| #1 Stripe confirmDeposit | 2026-03-21 | (see commit) | Now calls stripe.paymentIntents.retrieve() and checks status === 'requires_capture' |

@@ -15,6 +15,10 @@ vi.mock('stripe', () => {
           id: 'pi_test_123',
           client_secret: 'pi_test_123_secret_abc',
         }),
+        retrieve: vi.fn().mockResolvedValue({
+          id: 'pi_test_123',
+          status: 'requires_capture',
+        }),
         capture: vi.fn().mockResolvedValue({ id: 'pi_test_123', status: 'succeeded' }),
         cancel: vi.fn().mockResolvedValue({ id: 'pi_test_123', status: 'canceled' }),
       };

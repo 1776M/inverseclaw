@@ -32,7 +32,11 @@ export class StripeDepositProvider implements DepositProvider {
     depositId: string,
     confirmation: Record<string, string>
   ): Promise<boolean> {
-    return confirmation.payment_intent_id === depositId;
+    if (confirmation.payment_intent_id !== depositId) return false;
+
+    // Verify with Stripe that the hold actually succeeded
+    const intent = await this.stripe.paymentIntents.retrieve(depositId);
+    return intent.status === 'requires_capture';
   }
 
   async capture(depositId: string): Promise<void> {

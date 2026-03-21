@@ -208,8 +208,15 @@ export class EvmUsdcProvider implements DepositProvider {
     });
 
     try {
-      const receipt = await client.getTransactionReceipt({
+      // Wait for confirmations to protect against chain reorgs
+      // L2s (Base, Arbitrum, Optimism): 2 confirmations (~4 seconds)
+      // L1 (Ethereum): 12 confirmations (~2.5 minutes)
+      const confirmations = this.chainId === 1 ? 12 : 2;
+
+      const receipt = await client.waitForTransactionReceipt({
         hash: txHash as `0x${string}`,
+        confirmations,
+        timeout: 120_000, // 2 minute timeout
       });
 
       if (receipt.status !== 'success') return false;

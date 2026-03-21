@@ -147,7 +147,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** `confirmDeposit` checks the transaction receipt immediately with no minimum block confirmations. On Ethereum mainnet, a 1-confirmation tx can be reorganized. Less of an issue on L2s but still a theoretical risk.
 - **Fix:** Wait for N confirmations before confirming. For Base L2: 1-2 blocks is fine. For Ethereum mainnet: wait for 12+ confirmations.
 - **Effort:** Small
-- **Status:** Open
+- **Status:** Fixed
 
 ---
 
@@ -188,3 +188,4 @@ Identified 2026-03-21. Work through these before any public launch.
 | #19 Timing-safe key | 2026-03-21 | (see commit) | crypto.timingSafeEqual for all API key comparisons. |
 | #13 Fixed GBP/USD rate | 2026-03-21 | f0d0838 | Eliminated — all deposits now in USD cents. No conversion needed. |
 | #14 HTTPS enforcement | 2026-03-21 | — | Closed — addressed in production checklist docs. Reverse proxy handles TLS. |
+| #20 Chain reorg protection | 2026-03-21 | (see commit) | waitForTransactionReceipt with confirmations: 12 (L1) or 2 (L2). 2min timeout. |

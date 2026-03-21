@@ -44,7 +44,20 @@ vi.mock('viem', () => {
           },
         ],
       }),
-      waitForTransactionReceipt: vi.fn().mockResolvedValue({ status: 'success' }),
+      waitForTransactionReceipt: vi.fn().mockResolvedValue({
+        status: 'success',
+        logs: [
+          {
+            address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+            topics: [
+              '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+              '0x000000000000000000000000sender0000000000000000000000000000000000',
+              '0x000000000000000000000000abc123wallet00000000000000000000000000000',
+            ],
+            data: '0x0000000000000000000000000000000000000000000000000000000001312d00', // 20_000_000 = 20 USDC
+          },
+        ],
+      }),
     }),
     createWalletClient: vi.fn().mockReturnValue({
       writeContract: vi.fn().mockResolvedValue('0xmocktxhash'),

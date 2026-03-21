@@ -387,7 +387,7 @@ Task IDs serve as the only access control for `GET /tasks/:task_id`. They MUST b
 | `POST /tasks/:task_id/deposit/release` | `Authorization: Bearer <business_api_key>` |
 | `DELETE /tasks/:task_id` | `Authorization: Bearer <business_api_key>` |
 
-The business API key is generated on first boot and stored locally. It is never shared with the index or any third party.
+The business API key is generated on first boot and stored locally. It is never shared with any third party.
 
 ---
 

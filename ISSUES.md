@@ -108,7 +108,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** Server listens on HTTP. API keys and PII transmitted in cleartext. The README mentions reverse proxy but doesn't enforce or warn.
 - **Fix:** (a) Add prominent warning in README that production MUST use HTTPS. (b) Optionally add `FORCE_HTTPS` env var that rejects non-TLS connections. (c) Document nginx/Caddy reverse proxy setup.
 - **Effort:** Small
-- **Status:** Open
+- **Status:** Closed — addressed in production checklist and deployment docs. Standard pattern: reverse proxy handles TLS.
 
 ### #15 No max length on text fields
 - **Files:** `packages/server/src/schemas.ts`
@@ -186,4 +186,5 @@ Identified 2026-03-21. Work through these before any public launch.
 | #15 Max length fields | 2026-03-21 | (see commit) | Added .max() to all text fields in Zod schemas. |
 | #18 CORS | 2026-03-21 | (see commit) | @fastify/cors with CORS_ORIGIN env var (default: all origins). |
 | #19 Timing-safe key | 2026-03-21 | (see commit) | crypto.timingSafeEqual for all API key comparisons. |
-| #13 Fixed GBP/USD rate | 2026-03-21 | (see commit) | Eliminated — all deposits now in USD cents. No conversion needed. |
+| #13 Fixed GBP/USD rate | 2026-03-21 | f0d0838 | Eliminated — all deposits now in USD cents. No conversion needed. |
+| #14 HTTPS enforcement | 2026-03-21 | — | Closed — addressed in production checklist docs. Reverse proxy handles TLS. |

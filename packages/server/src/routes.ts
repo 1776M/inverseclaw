@@ -219,4 +219,40 @@ export function registerRoutes(
       return { updated: true };
     }
   );
+
+  // DELETE /tasks/:task_id — business deletes task and all associated data (GDPR)
+  app.delete<{ Params: { task_id: string } }>(
+    '/tasks/:task_id',
+    async (request, reply) => {
+      const authHeader = request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        reply.status(401);
+        return errorResponse('Missing or invalid Authorization header', 'UNAUTHORIZED');
+      }
+
+      const providedKey = authHeader.slice(7);
+      if (providedKey !== config.businessApiKey) {
+        reply.status(401);
+        return errorResponse('Invalid API key', 'UNAUTHORIZED');
+      }
+
+      const { task_id } = request.params;
+
+      const task = await prisma.task.findUnique({
+        where: { taskId: task_id },
+      });
+
+      if (!task) {
+        reply.status(404);
+        return errorResponse('Task not found', 'TASK_NOT_FOUND');
+      }
+
+      await prisma.$transaction([
+        prisma.taskEvent.deleteMany({ where: { taskId: task_id } }),
+        prisma.task.delete({ where: { taskId: task_id } }),
+      ]);
+
+      return { deleted: true };
+    }
+  );
 }

@@ -806,6 +806,27 @@ Release the deposit hold — the hold disappears from the customer's card with n
 | 404 | `TASK_NOT_FOUND` | No task with that ID |
 | 409 | `INVALID_DEPOSIT_STATE` | Deposit is not in `held` state (already captured or released) |
 
+### DELETE /tasks/:task_id
+
+Permanently deletes a task and all its event history. Use this to comply with data subject deletion requests (GDPR right to erasure).
+
+**Authentication:** Required. Include your Business API Key.
+
+**No request body needed.**
+
+**Response (200):**
+
+```json
+{ "deleted": true }
+```
+
+**Error responses:**
+
+| Status | Code | When |
+|--------|------|------|
+| 401 | `UNAUTHORIZED` | Missing or invalid API key |
+| 404 | `TASK_NOT_FOUND` | No task with that ID |
+
 ---
 
 ## Task Lifecycle
@@ -1001,6 +1022,23 @@ In production, put the server behind a reverse proxy (nginx, Caddy, Cloudflare T
 ```
 https://yourdomain.com/.well-known/inverseclaw
 ```
+
+---
+
+## Data Protection
+
+When customers book services through Inverse Claw, you collect personal data (names, phone numbers, emails, and free-text details that may contain addresses). **You are the data controller for this data**, just as you would be for any booking taken over the phone, by email, or through your website.
+
+If you operate in a jurisdiction with data protection laws (GDPR in the UK/EU, CCPA in California, etc.), you are responsible for:
+
+- **Having a privacy notice** that tells customers what data you collect and why
+- **Responding to deletion requests** — use `DELETE /tasks/:task_id` to permanently remove a task and all its event history
+- **Data retention** — don't keep task data longer than you need it. Consider periodically deleting completed tasks older than your retention period
+- **Security** — run the server behind HTTPS in production, restrict access to the database file, and keep your Business API Key secret
+
+The Inverse Claw server stores all data locally on your infrastructure in a SQLite database. No customer data is sent to the index, to us, or to any third party. You have full control over it.
+
+The `DELETE /tasks/:task_id` endpoint (authenticated with your Business API Key) permanently removes the task record and all associated events from the database.
 
 ---
 

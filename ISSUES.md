@@ -64,7 +64,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** Tasks store PII (names, phones, emails, free-text details with addresses) with no data retention policy, no deletion endpoint, no DSAR mechanism, no privacy notice, no encryption at rest.
 - **Fix:** (a) Add `DELETE /tasks/:task_id` endpoint (requires business API key). (b) Add configurable retention TTL with auto-purge. (c) Document data handling in the README.
 - **Effort:** Medium
-- **Status:** Open
+- **Status:** Fixed — DELETE endpoint added + Data Protection section in README. Business is data controller, not us.
 
 ### #9 No notification system — tasks arrive silently
 - **Problem:** When a task is submitted, the business has no way to know. No email, no webhook, no SMS, no dashboard. A plumber has to poll their own API to see if someone booked them.
@@ -177,4 +177,5 @@ Identified 2026-03-21. Work through these before any public launch.
 | #4 .well-known localhost | 2026-03-21 | 8e16c39 | Added PUBLIC_URL env var to AppConfig. Both routes.ts and depositRoutes.ts use it with localhost fallback. |
 | #5 pending_deposit cancel | 2026-03-21 | f51ffb4 | Added pending_deposit → cancelled transition. Cancelling voids provider deposits (best effort). 3 new tests. |
 | #6 Auto-release on complete | 2026-03-21 | c1c9c96 | Deposits auto-release when task reaches completed or cancelled (after confirmation). Manual release returns 409 if already released. |
-| #7 Rate limiting | 2026-03-21 | (see commit) | @fastify/rate-limit: 100 req/min global, 10 req/min on POST /tasks per IP. |
+| #7 Rate limiting | 2026-03-21 | 0ef3202 | @fastify/rate-limit: 100 req/min global, 10 req/min on POST /tasks per IP. |
+| #8 GDPR compliance | 2026-03-21 | (see commit) | DELETE /tasks/:id endpoint + Data Protection section in README. Business is data controller. |

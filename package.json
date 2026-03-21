@@ -10,7 +10,7 @@
     "build:server": "npm run build -w packages/server",
     "dev:mcp": "npm run dev -w packages/mcp",
     "build:mcp": "npm run build -w packages/mcp",
-    "test": "vitest",
+    "test": "npm run test:server",
     "test:server": "npm run test -w packages/server",
     "test:mcp": "npm run test -w packages/mcp"
   }

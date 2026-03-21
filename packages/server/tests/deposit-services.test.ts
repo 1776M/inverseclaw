@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { ExtendedServiceSchema, loadServicesWithDeposit } from '../src/services.js';
 import { writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';

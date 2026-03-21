@@ -1,12 +1,12 @@
 /**
- * Deposit-aware route registrar (v1.1)
+ * Deposit-aware route registrar (v1.1, provider-agnostic)
  *
- * Registers ALL routes including the deposit-aware POST /tasks and
- * three new deposit endpoints. Used when any service has deposit_required.
+ * Registers ALL routes including deposit-aware POST /tasks and
+ * deposit management endpoints. Used when any service has a deposit config.
  *
- * Routes that are unchanged from routes.ts are duplicated here to avoid
- * modifying the original file. Fastify does not allow duplicate route paths,
- * so index.ts calls either registerRoutes OR registerDepositRoutes, never both.
+ * Supports multiple deposit providers (Stripe, USDC on Base, etc.).
+ * When a task requires a deposit, the response includes all provider
+ * options so the agent can pick one the user can use.
  */
 import type { FastifyInstance } from 'fastify';
 import type { DepositConfig } from './config.js';
@@ -18,7 +18,7 @@ import {
   isValidDepositTransition,
 } from './schemas.js';
 import { generateTransactionId, generateTaskId } from './transaction.js';
-import { createDepositHold, captureDeposit, releaseDeposit } from './stripe.js';
+import { getProvider } from './depositProvider.js';
 import { PrismaClient } from '@prisma/client';
 
 const PROTOCOL_VERSION = '1.0.0';
@@ -40,7 +40,7 @@ export function registerDepositRoutes(
   services: ExtendedService[],
   prisma: PrismaClient
 ): void {
-  // GET /health (same as routes.ts)
+  // GET /health
   app.get('/health', async () => {
     return {
       node_id: config.nodeId,
@@ -49,18 +49,19 @@ export function registerDepositRoutes(
     };
   });
 
-  // GET /services (extended to include deposit info)
+  // GET /services (includes deposit info)
   app.get('/services', async () => {
     return services.map((s) => ({
       name: s.name,
       description: s.description,
       service_area: s.service_area ?? null,
-      deposit_required: s.deposit_required ?? false,
-      deposit_amount_pence: s.deposit_amount_pence ?? null,
+      deposit: s.deposit
+        ? { amount_pence: s.deposit.amount_pence, providers: s.deposit.providers }
+        : null,
     }));
   });
 
-  // GET /.well-known/inverseclaw (extended to include deposit info)
+  // GET /.well-known/inverseclaw (includes deposit info)
   app.get('/.well-known/inverseclaw', async () => {
     return {
       protocol: 'inverseclaw',
@@ -74,14 +75,15 @@ export function registerDepositRoutes(
         name: s.name,
         description: s.description,
         service_area: s.service_area ?? null,
-        deposit_required: s.deposit_required ?? false,
-        deposit_amount_pence: s.deposit_amount_pence ?? null,
+        deposit: s.deposit
+          ? { amount_pence: s.deposit.amount_pence, providers: s.deposit.providers }
+          : null,
       })),
       presence_urls: config.presenceUrls,
     };
   });
 
-  // POST /tasks (deposit-aware)
+  // POST /tasks (deposit-aware, provider-agnostic)
   app.post('/tasks', async (request, reply) => {
     const parsed = CreateTaskBody.safeParse(request.body);
     if (!parsed.success) {
@@ -107,14 +109,25 @@ export function registerDepositRoutes(
 
     const taskId = generateTaskId();
     const transactionId = generateTransactionId(config.nodeId);
-    const needsDeposit = matchedService.deposit_required === true;
+    const needsDeposit = matchedService.deposit !== undefined;
 
     if (needsDeposit) {
-      // Create Stripe hold
-      const { paymentIntentId, clientSecret } = await createDepositHold(
-        matchedService.deposit_amount_pence!,
-        `Inverse Claw deposit: ${matchedService.name} (${transactionId})`
-      );
+      const deposit = matchedService.deposit!;
+
+      // Create deposits with all accepted providers
+      const depositProviders: Record<string, Record<string, unknown>> = {};
+      const depositInitData: Record<string, string> = {};
+
+      for (const providerType of deposit.providers) {
+        const provider = getProvider(providerType);
+        const result = await provider.createDeposit({
+          amountPence: deposit.amount_pence,
+          description: `Inverse Claw deposit: ${matchedService.name} (${transactionId})`,
+          taskId,
+        });
+        depositProviders[providerType] = result.clientData;
+        depositInitData[providerType] = result.depositId;
+      }
 
       await prisma.task.create({
         data: {
@@ -127,13 +140,13 @@ export function registerDepositRoutes(
           contactEmail: body.contact.email ?? null,
           status: 'pending_deposit',
           depositRequired: true,
-          depositAmountPence: matchedService.deposit_amount_pence!,
-          stripePaymentIntentId: paymentIntentId,
+          depositAmountPence: deposit.amount_pence,
+          depositInitData: JSON.stringify(depositInitData),
           depositStatus: null,
           events: {
             create: {
               status: 'pending_deposit',
-              message: `Task submitted — deposit hold of £${(matchedService.deposit_amount_pence! / 100).toFixed(2)} required`,
+              message: `Task submitted — deposit of £${(deposit.amount_pence / 100).toFixed(2)} required`,
             },
           },
         },
@@ -144,8 +157,8 @@ export function registerDepositRoutes(
         task_id: taskId,
         transaction_id: transactionId,
         status: 'pending_deposit',
-        stripe_client_secret: clientSecret,
-        deposit_amount_pence: matchedService.deposit_amount_pence!,
+        deposit_amount_pence: deposit.amount_pence,
+        deposit_providers: depositProviders,
       };
     }
 
@@ -177,16 +190,14 @@ export function registerDepositRoutes(
     };
   });
 
-  // GET /tasks/:task_id (extended with deposit fields)
+  // GET /tasks/:task_id (includes deposit fields)
   app.get<{ Params: { task_id: string } }>('/tasks/:task_id', async (request, reply) => {
     const { task_id } = request.params;
 
     const task = await prisma.task.findUnique({
       where: { taskId: task_id },
       include: {
-        events: {
-          orderBy: { createdAt: 'asc' },
-        },
+        events: { orderBy: { createdAt: 'asc' } },
       },
     });
 
@@ -208,6 +219,7 @@ export function registerDepositRoutes(
       status: task.status,
       deposit_required: task.depositRequired,
       deposit_amount_pence: task.depositAmountPence,
+      deposit_provider: task.depositProvider,
       deposit_status: task.depositStatus,
       created_at: task.createdAt.toISOString(),
       updated_at: task.updatedAt.toISOString(),
@@ -282,9 +294,9 @@ export function registerDepositRoutes(
     }
   );
 
-  // --- NEW deposit endpoints ---
+  // --- Deposit endpoints (provider-agnostic) ---
 
-  // POST /tasks/:task_id/deposit — agent confirms deposit hold
+  // POST /tasks/:task_id/deposit — agent confirms deposit
   app.post<{ Params: { task_id: string } }>(
     '/tasks/:task_id/deposit',
     async (request, reply) => {
@@ -298,7 +310,7 @@ export function registerDepositRoutes(
       }
 
       const { task_id } = request.params;
-      const { payment_intent_id } = parsed.data;
+      const { provider: providerType, ...confirmationData } = parsed.data;
 
       const task = await prisma.task.findUnique({
         where: { taskId: task_id },
@@ -317,9 +329,44 @@ export function registerDepositRoutes(
         );
       }
 
-      if (payment_intent_id !== task.stripePaymentIntentId) {
+      // Look up the deposit ID for this provider from init data
+      let initData: Record<string, string>;
+      try {
+        initData = JSON.parse(task.depositInitData ?? '{}');
+      } catch {
+        reply.status(500);
+        return errorResponse('Corrupt deposit init data', 'INTERNAL_ERROR');
+      }
+
+      const depositId = initData[providerType];
+      if (!depositId) {
         reply.status(400);
-        return errorResponse('payment_intent_id does not match', 'INVALID_PAYMENT_INTENT');
+        return errorResponse(
+          `Provider "${providerType}" was not offered for this task`,
+          'INVALID_PROVIDER'
+        );
+      }
+
+      // Verify with the provider
+      let provider;
+      try {
+        provider = getProvider(providerType);
+      } catch {
+        reply.status(400);
+        return errorResponse(
+          `Unknown deposit provider: "${providerType}"`,
+          'INVALID_PROVIDER'
+        );
+      }
+
+      const confirmed = await provider.confirmDeposit(
+        depositId,
+        confirmationData as Record<string, string>
+      );
+
+      if (!confirmed) {
+        reply.status(400);
+        return errorResponse('Deposit confirmation failed', 'DEPOSIT_NOT_CONFIRMED');
       }
 
       await prisma.$transaction([
@@ -327,13 +374,15 @@ export function registerDepositRoutes(
           data: {
             taskId: task_id,
             status: 'pending',
-            message: 'Deposit confirmed — task is now pending',
+            message: `Deposit confirmed via ${providerType} — task is now pending`,
           },
         }),
         prisma.task.update({
           where: { taskId: task_id },
           data: {
             status: 'pending',
+            depositProvider: providerType,
+            depositProviderId: depositId,
             depositStatus: 'held',
           },
         }),
@@ -343,7 +392,7 @@ export function registerDepositRoutes(
     }
   );
 
-  // POST /tasks/:task_id/deposit/capture — business captures hold on no-show
+  // POST /tasks/:task_id/deposit/capture — business captures on no-show
   app.post<{ Params: { task_id: string } }>(
     '/tasks/:task_id/deposit/capture',
     async (request, reply) => {
@@ -381,7 +430,8 @@ export function registerDepositRoutes(
         );
       }
 
-      await captureDeposit(task.stripePaymentIntentId!);
+      const provider = getProvider(task.depositProvider!);
+      await provider.capture(task.depositProviderId!);
 
       await prisma.task.update({
         where: { taskId: task_id },
@@ -430,7 +480,8 @@ export function registerDepositRoutes(
         );
       }
 
-      await releaseDeposit(task.stripePaymentIntentId!);
+      const provider = getProvider(task.depositProvider!);
+      await provider.release(task.depositProviderId!);
 
       await prisma.task.update({
         where: { taskId: task_id },

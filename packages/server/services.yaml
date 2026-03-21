@@ -8,8 +8,9 @@ services:
     service_area:
       country: GB
       regions: [M, SK, OL, WA]
-    deposit_required: true
-    deposit_amount_pence: 1500
+    deposit:
+      amount_pence: 1500
+      providers: [stripe, usdc_base]
 
   - name: Kitchen Deep Clean
     description: >

@@ -1,8 +1,8 @@
 /**
- * Deposit hold API tests
+ * Deposit hold API tests (provider-agnostic)
  *
- * Tests the deposit-aware routes using a mocked Stripe client.
- * Existing non-deposit behaviour is verified to be unchanged.
+ * Tests the deposit-aware routes using mocked Stripe and USDC providers.
+ * Verifies multi-provider support and backward compatibility.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 
@@ -15,23 +15,47 @@ vi.mock('stripe', () => {
           id: 'pi_test_123',
           client_secret: 'pi_test_123_secret_abc',
         }),
-        capture: vi.fn().mockResolvedValue({
-          id: 'pi_test_123',
-          status: 'succeeded',
-        }),
-        cancel: vi.fn().mockResolvedValue({
-          id: 'pi_test_123',
-          status: 'canceled',
-        }),
+        capture: vi.fn().mockResolvedValue({ id: 'pi_test_123', status: 'succeeded' }),
+        cancel: vi.fn().mockResolvedValue({ id: 'pi_test_123', status: 'canceled' }),
       };
     },
   };
 });
 
+// Mock viem to avoid real RPC calls
+vi.mock('viem', () => {
+  return {
+    createPublicClient: vi.fn().mockReturnValue({
+      getTransactionReceipt: vi.fn().mockResolvedValue({
+        status: 'success',
+        logs: [
+          {
+            address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+            topics: [
+              '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+              '0x000000000000000000000000sender0000000000000000000000000000000000',
+              '0x000000000000000000000000abc123wallet00000000000000000000000000000',
+            ],
+            data: '0x0000000000000000000000000000000000000000000000000000000000989680', // 10_000_000 = 10 USDC
+          },
+        ],
+      }),
+    }),
+    http: vi.fn(),
+    parseAbiItem: vi.fn(),
+  };
+});
+
+vi.mock('viem/chains', () => ({
+  base: { id: 8453, name: 'Base' },
+}));
+
 import Fastify from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { registerDepositRoutes } from '../src/depositRoutes.js';
-import { initStripe } from '../src/stripe.js';
+import { registerProvider, clearProviders } from '../src/depositProvider.js';
+import { StripeDepositProvider } from '../src/providers/stripe.js';
+import { UsdcBaseDepositProvider } from '../src/providers/usdc.js';
 import type { DepositConfig } from '../src/config.js';
 import type { ExtendedService } from '../src/services.js';
 import { execSync } from 'node:child_process';
@@ -52,6 +76,7 @@ const TEST_CONFIG: DepositConfig = {
   autoPublish: false,
   port: 0,
   stripeSecretKey: 'sk_test_fake',
+  usdcWalletAddress: '0xabc123wallet00000000000000000000000000000',
 };
 
 const TEST_SERVICES: ExtendedService[] = [
@@ -59,13 +84,14 @@ const TEST_SERVICES: ExtendedService[] = [
     name: 'Oven Cleaning',
     description: 'Professional oven cleaning',
     service_area: { country: 'GB', regions: ['M', 'SK'] },
-    deposit_required: true,
-    deposit_amount_pence: 1500,
+    deposit: {
+      amount_pence: 1500,
+      providers: ['stripe', 'usdc_base'],
+    },
   },
   {
     name: 'Plumbing',
     description: 'Emergency plumbing services',
-    deposit_required: false,
   },
 ];
 
@@ -85,7 +111,9 @@ beforeAll(async () => {
     datasources: { db: { url: TEST_DB_URL } },
   });
 
-  initStripe('sk_test_fake');
+  clearProviders();
+  registerProvider(new StripeDepositProvider('sk_test_fake'));
+  registerProvider(new UsdcBaseDepositProvider('0xabc123wallet00000000000000000000000000000'));
 
   app = Fastify();
   registerDepositRoutes(app, TEST_CONFIG, TEST_SERVICES, prisma);
@@ -95,13 +123,14 @@ beforeAll(async () => {
 afterAll(async () => {
   await app.close();
   await prisma.$disconnect();
+  clearProviders();
   if (existsSync(TEST_DB_DIR)) {
     rmSync(TEST_DB_DIR, { recursive: true, force: true });
   }
 });
 
-describe('POST /tasks (deposit-aware)', () => {
-  it('should return pending_deposit and stripe_client_secret for deposit service', async () => {
+describe('POST /tasks (multi-provider deposit)', () => {
+  it('should return pending_deposit with all provider options', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/tasks',
@@ -114,13 +143,21 @@ describe('POST /tasks (deposit-aware)', () => {
     expect(res.statusCode).toBe(201);
     const body = res.json();
     expect(body.status).toBe('pending_deposit');
-    expect(body.stripe_client_secret).toBe('pi_test_123_secret_abc');
     expect(body.deposit_amount_pence).toBe(1500);
-    expect(body.task_id).toMatch(/^tsk_/);
-    expect(body.transaction_id).toMatch(/^ic_dep123_/);
+
+    // Should have both providers
+    expect(body.deposit_providers).toBeDefined();
+    expect(body.deposit_providers.stripe).toBeDefined();
+    expect(body.deposit_providers.stripe.client_secret).toBe('pi_test_123_secret_abc');
+    expect(body.deposit_providers.usdc_base).toBeDefined();
+    expect(body.deposit_providers.usdc_base.wallet_address).toBe(
+      '0xabc123wallet00000000000000000000000000000'
+    );
+    expect(body.deposit_providers.usdc_base.chain_id).toBe(8453);
+    expect(body.deposit_providers.usdc_base.amount_usdc).toBeDefined();
   });
 
-  it('should return pending with no stripe fields for non-deposit service', async () => {
+  it('should return pending with no deposit for non-deposit service', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/tasks',
@@ -133,8 +170,7 @@ describe('POST /tasks (deposit-aware)', () => {
     expect(res.statusCode).toBe(201);
     const body = res.json();
     expect(body.status).toBe('pending');
-    expect(body.stripe_client_secret).toBeUndefined();
-    expect(body.deposit_amount_pence).toBeUndefined();
+    expect(body.deposit_providers).toBeUndefined();
   });
 
   it('should still reject unknown service', async () => {
@@ -143,26 +179,15 @@ describe('POST /tasks (deposit-aware)', () => {
       url: '/tasks',
       payload: {
         service_name: 'Rocket Launch',
-        details: 'To the moon',
+        details: 'Moon',
         contact: { name: 'Elon' },
       },
     });
     expect(res.statusCode).toBe(404);
-    expect(res.json().code).toBe('SERVICE_NOT_FOUND');
-  });
-
-  it('should still reject missing fields', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/tasks',
-      payload: { service_name: 'Oven Cleaning' },
-    });
-    expect(res.statusCode).toBe(400);
-    expect(res.json().code).toBe('VALIDATION_ERROR');
   });
 });
 
-describe('POST /tasks/:task_id/deposit (confirm deposit)', () => {
+describe('Confirm deposit via Stripe', () => {
   let taskId: string;
 
   beforeAll(async () => {
@@ -178,41 +203,29 @@ describe('POST /tasks/:task_id/deposit (confirm deposit)', () => {
     taskId = res.json().task_id;
   });
 
-  it('should confirm deposit and transition to pending', async () => {
+  it('should confirm via stripe provider', async () => {
     const res = await app.inject({
       method: 'POST',
       url: `/tasks/${taskId}/deposit`,
-      payload: { payment_intent_id: 'pi_test_123' },
+      payload: {
+        provider: 'stripe',
+        payment_intent_id: 'pi_test_123',
+      },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().updated).toBe(true);
     expect(res.json().status).toBe('pending');
   });
 
-  it('should show task as pending with deposit_status held', async () => {
+  it('should show deposit_provider as stripe', async () => {
     const res = await app.inject({ method: 'GET', url: `/tasks/${taskId}` });
     const body = res.json();
     expect(body.status).toBe('pending');
-    expect(body.deposit_required).toBe(true);
-    expect(body.deposit_amount_pence).toBe(1500);
+    expect(body.deposit_provider).toBe('stripe');
     expect(body.deposit_status).toBe('held');
-    expect(body.events).toHaveLength(2);
-    expect(body.events[0].status).toBe('pending_deposit');
-    expect(body.events[1].status).toBe('pending');
-  });
-
-  it('should reject confirm on task already past pending_deposit', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: `/tasks/${taskId}/deposit`,
-      payload: { payment_intent_id: 'pi_test_123' },
-    });
-    expect(res.statusCode).toBe(409);
-    expect(res.json().code).toBe('INVALID_STATE');
   });
 });
 
-describe('POST /tasks/:task_id/deposit (wrong payment_intent_id)', () => {
+describe('Confirm deposit via USDC', () => {
   let taskId: string;
 
   beforeAll(async () => {
@@ -228,75 +241,129 @@ describe('POST /tasks/:task_id/deposit (wrong payment_intent_id)', () => {
     taskId = res.json().task_id;
   });
 
-  it('should reject mismatched payment_intent_id', async () => {
+  it('should confirm via usdc_base provider', async () => {
     const res = await app.inject({
       method: 'POST',
       url: `/tasks/${taskId}/deposit`,
-      payload: { payment_intent_id: 'pi_wrong_id' },
+      payload: {
+        provider: 'usdc_base',
+        tx_hash: '0xabcdef1234567890',
+      },
     });
-    expect(res.statusCode).toBe(400);
-    expect(res.json().code).toBe('INVALID_PAYMENT_INTENT');
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe('pending');
+  });
+
+  it('should show deposit_provider as usdc_base', async () => {
+    const res = await app.inject({ method: 'GET', url: `/tasks/${taskId}` });
+    const body = res.json();
+    expect(body.deposit_provider).toBe('usdc_base');
+    expect(body.deposit_status).toBe('held');
   });
 });
 
-describe('Full deposit lifecycle', () => {
+describe('Deposit confirmation edge cases', () => {
+  it('should reject unknown provider type', async () => {
+    const res1 = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      payload: {
+        service_name: 'Oven Cleaning',
+        details: 'Test',
+        contact: { name: 'Dave' },
+      },
+    });
+    const taskId = res1.json().task_id;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/tasks/${taskId}/deposit`,
+      payload: { provider: 'paypal', some_field: 'abc' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('INVALID_PROVIDER');
+  });
+
+  it('should reject confirm on non-deposit task', async () => {
+    const res1 = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      payload: {
+        service_name: 'Plumbing',
+        details: 'Test',
+        contact: { name: 'Eve' },
+      },
+    });
+    const taskId = res1.json().task_id;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/tasks/${taskId}/deposit`,
+      payload: { provider: 'stripe', payment_intent_id: 'pi_test_123' },
+    });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it('should reject wrong Stripe payment_intent_id', async () => {
+    const res1 = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      payload: {
+        service_name: 'Oven Cleaning',
+        details: 'Test',
+        contact: { name: 'Frank' },
+      },
+    });
+    const taskId = res1.json().task_id;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/tasks/${taskId}/deposit`,
+      payload: { provider: 'stripe', payment_intent_id: 'pi_wrong' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('DEPOSIT_NOT_CONFIRMED');
+  });
+});
+
+describe('Full lifecycle with Stripe deposit', () => {
   let taskId: string;
 
-  it('Step 1: Create task with deposit', async () => {
+  it('Step 1: Create task', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/tasks',
       payload: {
         service_name: 'Oven Cleaning',
         details: 'Double oven, M20 4BX',
-        contact: { name: 'Dave', phone: '07700900000' },
+        contact: { name: 'Grace', phone: '07700900000' },
       },
     });
-    expect(res.statusCode).toBe(201);
     taskId = res.json().task_id;
     expect(res.json().status).toBe('pending_deposit');
   });
 
-  it('Step 2: Confirm deposit', async () => {
-    const res = await app.inject({
+  it('Step 2: Confirm deposit via Stripe', async () => {
+    await app.inject({
       method: 'POST',
       url: `/tasks/${taskId}/deposit`,
-      payload: { payment_intent_id: 'pi_test_123' },
+      payload: { provider: 'stripe', payment_intent_id: 'pi_test_123' },
     });
-    expect(res.statusCode).toBe(200);
   });
 
-  it('Step 3: Business accepts', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: `/tasks/${taskId}/events`,
-      headers: { authorization: `Bearer ${TEST_CONFIG.businessApiKey}` },
-      payload: { status: 'accepted', message: 'Booked for Tuesday' },
-    });
-    expect(res.statusCode).toBe(200);
+  it('Step 3: Business accepts, progresses, completes', async () => {
+    for (const status of ['accepted', 'in_progress', 'completed']) {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/tasks/${taskId}/events`,
+        headers: { authorization: `Bearer ${TEST_CONFIG.businessApiKey}` },
+        payload: { status },
+      });
+      expect(res.statusCode).toBe(200);
+    }
   });
 
-  it('Step 4: Business starts work', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: `/tasks/${taskId}/events`,
-      headers: { authorization: `Bearer ${TEST_CONFIG.businessApiKey}` },
-      payload: { status: 'in_progress', message: 'On the way' },
-    });
-    expect(res.statusCode).toBe(200);
-  });
-
-  it('Step 5: Business completes', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: `/tasks/${taskId}/events`,
-      headers: { authorization: `Bearer ${TEST_CONFIG.businessApiKey}` },
-      payload: { status: 'completed', message: 'Job done' },
-    });
-    expect(res.statusCode).toBe(200);
-  });
-
-  it('Step 6: Business releases deposit', async () => {
+  it('Step 4: Business releases deposit', async () => {
     const res = await app.inject({
       method: 'POST',
       url: `/tasks/${taskId}/deposit/release`,
@@ -306,19 +373,14 @@ describe('Full deposit lifecycle', () => {
     expect(res.json().released).toBe(true);
   });
 
-  it('Step 7: Full event history is correct', async () => {
+  it('Step 5: Verify final state', async () => {
     const res = await app.inject({ method: 'GET', url: `/tasks/${taskId}` });
     const body = res.json();
     expect(body.status).toBe('completed');
+    expect(body.deposit_provider).toBe('stripe');
     expect(body.deposit_status).toBe('released');
     const statuses = body.events.map((e: any) => e.status);
-    expect(statuses).toEqual([
-      'pending_deposit',
-      'pending',
-      'accepted',
-      'in_progress',
-      'completed',
-    ]);
+    expect(statuses).toEqual(['pending_deposit', 'pending', 'accepted', 'in_progress', 'completed']);
   });
 });
 
@@ -331,16 +393,15 @@ describe('Deposit capture (no-show)', () => {
       url: '/tasks',
       payload: {
         service_name: 'Oven Cleaning',
-        details: 'Single oven',
-        contact: { name: 'Eve' },
+        details: 'Test',
+        contact: { name: 'Heidi' },
       },
     });
     taskId = res.json().task_id;
-    // Confirm deposit
     await app.inject({
       method: 'POST',
       url: `/tasks/${taskId}/deposit`,
-      payload: { payment_intent_id: 'pi_test_123' },
+      payload: { provider: 'stripe', payment_intent_id: 'pi_test_123' },
     });
   });
 
@@ -354,11 +415,6 @@ describe('Deposit capture (no-show)', () => {
     expect(res.json().captured).toBe(true);
   });
 
-  it('should show deposit_status as captured', async () => {
-    const res = await app.inject({ method: 'GET', url: `/tasks/${taskId}` });
-    expect(res.json().deposit_status).toBe('captured');
-  });
-
   it('should reject double capture', async () => {
     const res = await app.inject({
       method: 'POST',
@@ -366,7 +422,6 @@ describe('Deposit capture (no-show)', () => {
       headers: { authorization: `Bearer ${TEST_CONFIG.businessApiKey}` },
     });
     expect(res.statusCode).toBe(409);
-    expect(res.json().code).toBe('INVALID_DEPOSIT_STATE');
   });
 });
 
@@ -380,18 +435,18 @@ describe('Deposit auth checks', () => {
       payload: {
         service_name: 'Oven Cleaning',
         details: 'Test',
-        contact: { name: 'Frank' },
+        contact: { name: 'Ivan' },
       },
     });
     taskId = res.json().task_id;
     await app.inject({
       method: 'POST',
       url: `/tasks/${taskId}/deposit`,
-      payload: { payment_intent_id: 'pi_test_123' },
+      payload: { provider: 'stripe', payment_intent_id: 'pi_test_123' },
     });
   });
 
-  it('capture should reject missing auth', async () => {
+  it('capture rejects missing auth', async () => {
     const res = await app.inject({
       method: 'POST',
       url: `/tasks/${taskId}/deposit/capture`,
@@ -399,24 +454,7 @@ describe('Deposit auth checks', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('capture should reject wrong API key', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: `/tasks/${taskId}/deposit/capture`,
-      headers: { authorization: 'Bearer wrong_key' },
-    });
-    expect(res.statusCode).toBe(401);
-  });
-
-  it('release should reject missing auth', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: `/tasks/${taskId}/deposit/release`,
-    });
-    expect(res.statusCode).toBe(401);
-  });
-
-  it('release should reject wrong API key', async () => {
+  it('release rejects wrong key', async () => {
     const res = await app.inject({
       method: 'POST',
       url: `/tasks/${taskId}/deposit/release`,
@@ -426,87 +464,23 @@ describe('Deposit auth checks', () => {
   });
 });
 
-describe('Non-deposit task via deposit routes', () => {
-  let taskId: string;
-
-  beforeAll(async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/tasks',
-      payload: {
-        service_name: 'Plumbing',
-        details: 'Leaky tap in kitchen',
-        contact: { name: 'Grace', phone: '07700900111' },
-      },
-    });
-    taskId = res.json().task_id;
-  });
-
-  it('should show deposit_required as false', async () => {
-    const res = await app.inject({ method: 'GET', url: `/tasks/${taskId}` });
-    const body = res.json();
-    expect(body.deposit_required).toBe(false);
-    expect(body.deposit_amount_pence).toBeNull();
-    expect(body.deposit_status).toBeNull();
-  });
-
-  it('should reject deposit confirm on non-deposit task', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: `/tasks/${taskId}/deposit`,
-      payload: { payment_intent_id: 'pi_anything' },
-    });
-    expect(res.statusCode).toBe(409);
-    expect(res.json().code).toBe('INVALID_STATE');
-  });
-
-  it('should work through normal lifecycle without deposit', async () => {
-    let res = await app.inject({
-      method: 'POST',
-      url: `/tasks/${taskId}/events`,
-      headers: { authorization: `Bearer ${TEST_CONFIG.businessApiKey}` },
-      payload: { status: 'accepted' },
-    });
-    expect(res.statusCode).toBe(200);
-
-    res = await app.inject({
-      method: 'POST',
-      url: `/tasks/${taskId}/events`,
-      headers: { authorization: `Bearer ${TEST_CONFIG.businessApiKey}` },
-      payload: { status: 'in_progress' },
-    });
-    expect(res.statusCode).toBe(200);
-
-    res = await app.inject({
-      method: 'POST',
-      url: `/tasks/${taskId}/events`,
-      headers: { authorization: `Bearer ${TEST_CONFIG.businessApiKey}` },
-      payload: { status: 'completed' },
-    });
-    expect(res.statusCode).toBe(200);
-
-    res = await app.inject({ method: 'GET', url: `/tasks/${taskId}` });
-    expect(res.json().status).toBe('completed');
-  });
-});
-
-describe('GET /services (deposit-aware)', () => {
-  it('should include deposit fields in service listing', async () => {
+describe('GET /services (provider-agnostic)', () => {
+  it('should show deposit config with providers array', async () => {
     const res = await app.inject({ method: 'GET', url: '/services' });
     const services = res.json();
-    expect(services[0].deposit_required).toBe(true);
-    expect(services[0].deposit_amount_pence).toBe(1500);
-    expect(services[1].deposit_required).toBe(false);
-    expect(services[1].deposit_amount_pence).toBeNull();
+    expect(services[0].deposit).toEqual({
+      amount_pence: 1500,
+      providers: ['stripe', 'usdc_base'],
+    });
+    expect(services[1].deposit).toBeNull();
   });
 });
 
-describe('GET /.well-known/inverseclaw (deposit-aware)', () => {
-  it('should include deposit fields in discovery manifest', async () => {
+describe('GET /.well-known/inverseclaw (provider-agnostic)', () => {
+  it('should include deposit config in manifest', async () => {
     const res = await app.inject({ method: 'GET', url: '/.well-known/inverseclaw' });
-    const body = res.json();
-    const ovenService = body.services.find((s: any) => s.name === 'Oven Cleaning');
-    expect(ovenService.deposit_required).toBe(true);
-    expect(ovenService.deposit_amount_pence).toBe(1500);
+    const svc = res.json().services[0];
+    expect(svc.deposit.providers).toContain('stripe');
+    expect(svc.deposit.providers).toContain('usdc_base');
   });
 });

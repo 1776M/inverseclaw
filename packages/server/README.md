@@ -171,7 +171,10 @@ The node ID and API key persist across restarts in `data/node.json`. If you lose
 | `CONTACT_EMAIL` | **Yes** | — | Contact email for customers to reach you |
 | `CONTACT_PHONE` | No | — | Contact phone number |
 | `PRESENCE_URLS` | No | — | Comma-separated URLs of your public profiles (Facebook, Checkatrade, Google Business, your website). Used for trust verification. |
-| `STRIPE_SECRET_KEY` | Conditional | — | Your Stripe secret key. **Required only if any service has `deposit_required: true`**. Not needed otherwise. |
+| `STRIPE_SECRET_KEY` | Conditional | — | Your Stripe secret key. **Required only if any service lists `stripe` in its deposit providers.** |
+| `USDC_WALLET_ADDRESS` | Conditional | — | Your wallet address on Base L2. **Required only if any service lists `usdc_base` in its deposit providers.** |
+| `BASE_RPC_URL` | No | `https://mainnet.base.org` | Base L2 RPC endpoint for USDC transaction verification |
+| `GBP_USD_RATE` | No | `1.27` | GBP to USD conversion rate for USDC deposit amounts |
 | `INDEX_ENDPOINT` | No | — | Inverse Claw Index URL for auto-registration |
 | `INDEX_API_KEY` | No | — | Write API key from index registration |
 | `AUTO_PUBLISH` | No | `false` | Set to `true` to auto-register with the index on startup |
@@ -194,8 +197,9 @@ services:
     service_area:
       country: GB
       regions: [M, SK, OL, WA]
-    deposit_required: true
-    deposit_amount_pence: 1500
+    deposit:
+      amount_pence: 1500
+      providers: [stripe, usdc_base]
 
   - name: Kitchen Deep Clean
     description: >
@@ -218,8 +222,9 @@ services:
 | `service_area.regions` | No | Array of postcode prefixes or region codes |
 | `service_area.cities` | No | Array of city names |
 | `service_area.radius_km` | No | Service radius in kilometres |
-| `deposit_required` | No | Set to `true` to require a card deposit hold before accepting this service. Default: `false`. |
-| `deposit_amount_pence` | Conditional | Amount in pence to hold on the customer's card. **Required if `deposit_required` is `true`.** You decide this amount per service. |
+| `deposit` | No | Deposit configuration object. Omit entirely for no deposit. |
+| `deposit.amount_pence` | Yes (if deposit) | Amount in pence. You decide this per service. |
+| `deposit.providers` | Yes (if deposit) | Array of accepted deposit providers: `stripe`, `usdc_base`, or both. Agents pick one the user can use. |
 
 #### Tips for good service descriptions
 
@@ -245,65 +250,81 @@ The hold **releases automatically** on normal completion or if you cancel the jo
 
 ### Setting Up Deposits
 
-**Step 1: Get a Stripe account**
+The server supports multiple deposit providers. You choose which ones to accept per service — agents pick one that works for the customer.
 
-Sign up at [stripe.com](https://stripe.com) if you don't have one. You need your **secret key** (starts with `sk_live_` for production or `sk_test_` for testing).
+**Built-in providers:**
 
-**Step 2: Set the environment variable**
+| Provider | ID | What it does | Required env var |
+|----------|----|-------------|-----------------|
+| **Stripe** | `stripe` | Card pre-auth hold (hold model — no charge until capture) | `STRIPE_SECRET_KEY` |
+| **USDC on Base** | `usdc_base` | USDC transfer on Base L2 (direct transfer — works worldwide) | `USDC_WALLET_ADDRESS` |
+
+You can accept one or both. Each service can have different providers.
+
+**Step 1: Set up your provider credentials**
+
+For **Stripe**: Sign up at [stripe.com](https://stripe.com). Get your secret key (`sk_live_...` for production, `sk_test_...` for testing).
+
+For **USDC on Base**: You need a wallet address on Base L2 that can receive USDC.
 
 ```bash
-export STRIPE_SECRET_KEY="sk_live_your_key_here"
-```
-
-Or in your `.env` file:
-
-```
+# In your .env file — only set the ones you need:
 STRIPE_SECRET_KEY=sk_live_your_key_here
+USDC_WALLET_ADDRESS=0xYourWalletAddressHere
 ```
 
-Or in `docker-compose.yml`:
+**Step 2: Configure deposits per service**
 
-```yaml
-environment:
-  - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-```
-
-**Step 3: Add deposit fields to your services**
-
-In `services.yaml`, add `deposit_required: true` and `deposit_amount_pence` to any service you want to protect:
+In `services.yaml`, add a `deposit` block to any service you want to protect:
 
 ```yaml
 services:
   - name: Oven Cleaning
     description: Professional domestic oven cleaning...
-    deposit_required: true
-    deposit_amount_pence: 1500    # £15.00 hold
+    deposit:
+      amount_pence: 1500              # £15.00
+      providers: [stripe, usdc_base]  # accept both
 
   - name: Emergency Plumbing
     description: Emergency callout for leaks...
-    deposit_required: true
-    deposit_amount_pence: 3000    # £30.00 hold
+    deposit:
+      amount_pence: 3000              # £30.00
+      providers: [stripe]             # card only
 
   - name: Garden Maintenance
     description: Weekly garden maintenance...
-    # No deposit — open to any agent
+    # No deposit block = no deposit required
 ```
 
-**You decide the deposit amount for each service.** A small amount (£10-20) is usually enough to deter trolls without putting off genuine customers. Emergency or high-value services might warrant more.
+**You decide the deposit amount for each service.** A small amount (£10-20) is usually enough to deter trolls. Emergency or high-value services might warrant more.
 
-**Step 4: Start the server**
+**Step 3: Start the server**
 
-The server will detect that some services require deposits and initialise Stripe automatically:
+The server detects which providers are needed and initialises them:
 
 ```
 Loaded 3 service(s) from services.yaml
-  - Oven Cleaning (deposit: £15.00)
-  - Emergency Plumbing (deposit: £30.00)
+  - Oven Cleaning (deposit: £15.00 via stripe, usdc_base)
+  - Emergency Plumbing (deposit: £30.00 via stripe)
   - Garden Maintenance
-Stripe initialized for deposit holds
+Stripe deposit provider initialized
+USDC (Base L2) deposit provider initialized
 ```
 
-If you set `deposit_required: true` on any service but forget to set `STRIPE_SECRET_KEY`, the server will fail to start with a clear error message.
+If you reference a provider but forget its env var, the server will fail with a clear error.
+
+#### Stripe vs USDC: key differences
+
+| | Stripe | USDC on Base |
+|---|---|---|
+| **How it works** | Pre-auth hold on card (no charge) | Direct USDC transfer to your wallet |
+| **Release** | Automated — hold disappears | Business refunds manually (honor system) |
+| **Capture** | Automated — card is charged | No-op — funds already in your wallet |
+| **Identity** | Card links to real person via KYC | Wallet is pseudonymous |
+| **Availability** | ~47 countries | Worldwide (anyone with a wallet) |
+| **Best for** | Maximum trust (real identity) | Global reach (no banking required) |
+
+Both providers deter trolls (real money at stake) and confirm the customer has skin in the game. Stripe provides stronger identity proof; USDC provides global reach.
 
 ### How Deposits Work (Step by Step)
 
@@ -311,26 +332,24 @@ Here's what happens when a customer's AI agent books a deposit-protected service
 
 ```
 1. Agent submits a task (POST /tasks)
-   ← Server creates a Stripe hold and returns a stripe_client_secret
+   ← Server returns all accepted deposit providers with their details
    ← Task starts in "pending_deposit" status
 
-2. Agent confirms the card hold using the stripe_client_secret
-   (This happens on the customer's side via Stripe.js)
+2. Agent picks a provider the customer can use (e.g. Stripe card or USDC)
+   Agent completes the deposit on the customer's side
 
 3. Agent confirms deposit with server (POST /tasks/:id/deposit)
-   ← Task moves to "pending" status
-   ← depositStatus is now "held"
+   ← Sends provider type + proof (e.g. payment_intent_id or tx_hash)
+   ← Task moves to "pending", depositStatus is "held"
 
-4. You see the task — the deposit is confirmed, the customer is real
+4. You see the task — the deposit is confirmed, the customer has skin in the game
    You accept it (POST /tasks/:id/events with status: "accepted")
 
 5. You do the work, push status updates as normal
    accepted → in_progress → completed
 
-6. Job done — you release the deposit hold
+6. Job done — you release the deposit
    (POST /tasks/:id/deposit/release)
-   ← The hold disappears from the customer's card
-   ← No money was ever charged
 ```
 
 ### Capturing vs Releasing a Deposit
@@ -383,15 +402,13 @@ The discovery endpoint. Any AI agent that knows your domain can hit this URL to 
       "name": "Oven Cleaning",
       "description": "Professional domestic oven cleaning...",
       "service_area": { "country": "GB", "regions": ["M", "SK", "OL", "WA"] },
-      "deposit_required": true,
-      "deposit_amount_pence": 1500
+      "deposit": { "amount_pence": 1500, "providers": ["stripe", "usdc_base"] }
     },
     {
       "name": "Kitchen Deep Clean",
       "description": "Full kitchen deep clean...",
       "service_area": { "country": "GB", "regions": ["M", "SK", "OL"] },
-      "deposit_required": false,
-      "deposit_amount_pence": null
+      "deposit": null
     }
   ],
   "presence_urls": [
@@ -413,15 +430,13 @@ Returns your services array. Same data as the manifest but without node metadata
     "name": "Oven Cleaning",
     "description": "Professional domestic oven cleaning...",
     "service_area": { "country": "GB", "regions": ["M", "SK", "OL", "WA"] },
-    "deposit_required": true,
-    "deposit_amount_pence": 1500
+    "deposit": { "amount_pence": 1500, "providers": ["stripe", "usdc_base"] }
   },
   {
     "name": "Kitchen Deep Clean",
     "description": "Full kitchen deep clean...",
     "service_area": { "country": "GB", "regions": ["M", "SK", "OL"] },
-    "deposit_required": false,
-    "deposit_amount_pence": null
+    "deposit": null
   }
 ]
 ```
@@ -485,12 +500,23 @@ Agent submits a service request on behalf of a customer. The business then conta
   "task_id": "tsk_za3e7j6u97am",
   "transaction_id": "ic_a3f9b2_20260320T143022_k7x9m",
   "status": "pending_deposit",
-  "stripe_client_secret": "pi_3abc123_secret_xyz",
-  "deposit_amount_pence": 1500
+  "deposit_amount_pence": 1500,
+  "deposit_providers": {
+    "stripe": {
+      "client_secret": "pi_3abc123_secret_xyz"
+    },
+    "usdc_base": {
+      "wallet_address": "0x1234...",
+      "amount_usdc": "19.05",
+      "chain_id": 8453,
+      "deposit_reference": "dep_abc123...",
+      "token_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    }
+  }
 }
 ```
 
-The `stripe_client_secret` is used by the agent/customer to confirm the card hold on their side via Stripe.js. Once confirmed, the agent calls `POST /tasks/:task_id/deposit` to transition the task to `pending`.
+The response includes all accepted deposit providers. The agent picks one the customer can use, completes the deposit, then calls `POST /tasks/:task_id/deposit` to confirm.
 
 **Error responses:**
 
@@ -519,6 +545,7 @@ Returns full task details including contact information, current status, deposit
   "status": "accepted",
   "deposit_required": true,
   "deposit_amount_pence": 1500,
+  "deposit_provider": "stripe",
   "deposit_status": "held",
   "created_at": "2026-03-20T14:30:22.000Z",
   "updated_at": "2026-03-20T15:10:00.000Z",
@@ -598,13 +625,24 @@ Agent confirms that the customer's card hold was successful. Transitions the tas
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `payment_intent_id` | **Yes** | The Stripe PaymentIntent ID (must match the one created when the task was submitted) |
+| `provider` | **Yes** | Which deposit provider was used: `stripe`, `usdc_base`, etc. |
+| (provider fields) | **Yes** | Provider-specific confirmation fields (see below) |
 
-**Example:**
+**Example — Stripe:**
 
 ```json
 {
+  "provider": "stripe",
   "payment_intent_id": "pi_3abc123"
+}
+```
+
+**Example — USDC on Base:**
+
+```json
+{
+  "provider": "usdc_base",
+  "tx_hash": "0xabcdef1234567890..."
 }
 ```
 
@@ -618,8 +656,9 @@ Agent confirms that the customer's card hold was successful. Transitions the tas
 
 | Status | Code | When |
 |--------|------|------|
-| 400 | `VALIDATION_ERROR` | Missing payment_intent_id |
-| 400 | `INVALID_PAYMENT_INTENT` | payment_intent_id doesn't match the task |
+| 400 | `VALIDATION_ERROR` | Missing provider field |
+| 400 | `INVALID_PROVIDER` | Provider not offered for this task or unknown |
+| 400 | `DEPOSIT_NOT_CONFIRMED` | Provider could not verify the deposit |
 | 404 | `TASK_NOT_FOUND` | No task with that ID |
 | 409 | `INVALID_STATE` | Task is not in `pending_deposit` state |
 
@@ -778,7 +817,11 @@ packages/server/
     schemas.ts         # Zod schemas + state machine
     routes.ts          # API route handlers (non-deposit)
     depositRoutes.ts   # API route handlers (deposit-aware)
-    stripe.ts          # Stripe SDK wrapper for deposit holds
+    depositProvider.ts # Provider interface + registry (extensible)
+    providers/
+      stripe.ts        # Stripe deposit provider (card holds)
+      usdc.ts          # USDC on Base deposit provider (crypto)
+      index.ts         # Provider barrel exports
     transaction.ts     # Transaction and task ID generation
   prisma/
     schema.prisma      # Database schema (SQLite)
@@ -865,20 +908,32 @@ https://yourdomain.com/.well-known/inverseclaw
 
 ## FAQ
 
-**Do I need Stripe?**
-Only if you want deposit holds on any of your services. If none of your services have `deposit_required: true`, Stripe is not needed and the server runs without it.
+**Do I need Stripe or USDC?**
+Only if you want deposits on any of your services. If no service has a `deposit` block, neither is needed and the server runs without any payment dependencies.
 
-**What happens to the deposit if I don't capture or release it?**
+**Can I accept both Stripe and crypto?**
+Yes. Set `providers: [stripe, usdc_base]` on a service. The agent picks whichever one the customer can use.
+
+**What if I only want crypto, not Stripe?**
+Set `providers: [usdc_base]` and only set `USDC_WALLET_ADDRESS`. No Stripe account needed.
+
+**What happens to the Stripe deposit if I don't capture or release it?**
 Stripe automatically releases uncaptured holds after 7 days.
 
+**What happens to the USDC deposit if I don't release it?**
+The USDC is already in your wallet. "Releasing" a USDC deposit means you manually send it back. If you don't, you keep it.
+
 **Can I set different deposit amounts for different services?**
-Yes. Each service has its own `deposit_amount_pence` value. Set it per service in `services.yaml`.
+Yes. Each service has its own `amount_pence`. Set it per service in `services.yaml`.
 
 **Does the deposit replace payment for the service?**
-No. The deposit is a small hold to prove the customer is real. Actual payment for the service happens directly between you and the customer — cash, card, bank transfer, invoice, whatever you normally use.
+No. The deposit is a small amount to prove the customer has skin in the game. Actual payment happens directly between you and the customer.
 
 **What currency are deposits in?**
-Currently GBP only (amounts are in pence). Multi-currency support is planned.
+Stripe deposits are in GBP. USDC deposits are converted from GBP at a configurable rate (default 1.27 GBP/USD, override with `GBP_USD_RATE` env var).
+
+**Can I add my own deposit provider?**
+Yes. Implement the `DepositProvider` interface in `src/depositProvider.ts`, create your provider in `src/providers/`, and register it in `src/index.ts`. The server is designed to be extended.
 
 **Can agents submit tasks without the index?**
 Yes. If an agent knows your domain, it can hit `/.well-known/inverseclaw` to discover your services and submit tasks directly. The index is for agents that don't know which businesses exist.

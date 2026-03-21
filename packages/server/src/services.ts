@@ -22,17 +22,18 @@ const ServicesFileSchema = z.object({
 
 export type Service = z.infer<typeof ServiceSchema>;
 
-// --- Deposit hold extensions (v1.1) ---
+// --- Deposit hold extensions (v1.1, provider-agnostic) ---
+
+const DepositConfigSchema = z.object({
+  amount_pence: z.number().int().positive(),
+  providers: z.array(z.string().min(1)).min(1, 'At least one deposit provider required'),
+});
 
 const ExtendedServiceSchema = ServiceSchema.extend({
-  deposit_required: z.boolean().optional().default(false),
-  deposit_amount_pence: z.number().int().positive().optional(),
-}).refine(
-  (s) => !s.deposit_required || (s.deposit_amount_pence !== undefined && s.deposit_amount_pence > 0),
-  { message: 'deposit_amount_pence is required and must be positive when deposit_required is true' }
-);
+  deposit: DepositConfigSchema.optional(),
+});
 
-export { ExtendedServiceSchema };
+export { ExtendedServiceSchema, DepositConfigSchema };
 export type ExtendedService = z.infer<typeof ExtendedServiceSchema>;
 
 const ExtendedServicesFileSchema = z.object({

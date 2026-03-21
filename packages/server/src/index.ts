@@ -6,7 +6,9 @@ import { loadDepositConfig } from './config.js';
 import { loadServicesWithDeposit } from './services.js';
 import { registerRoutes } from './routes.js';
 import { registerDepositRoutes } from './depositRoutes.js';
-import { initStripe } from './stripe.js';
+import { registerProvider, getRegisteredProviderTypes } from './depositProvider.js';
+import { StripeDepositProvider } from './providers/stripe.js';
+import { UsdcBaseDepositProvider } from './providers/usdc.js';
 
 async function main(): Promise<void> {
   // Load config and services (extended versions that support deposit fields)
@@ -15,20 +17,61 @@ async function main(): Promise<void> {
 
   console.log(`Loaded ${services.length} service(s) from services.yaml`);
   for (const s of services) {
-    console.log(`  - ${s.name}${s.deposit_required ? ` (deposit: £${(s.deposit_amount_pence! / 100).toFixed(2)})` : ''}`);
+    const depositInfo = s.deposit
+      ? ` (deposit: £${(s.deposit.amount_pence / 100).toFixed(2)} via ${s.deposit.providers.join(', ')})`
+      : '';
+    console.log(`  - ${s.name}${depositInfo}`);
   }
 
-  // Check if any service requires deposits
-  const anyDepositRequired = services.some((s) => s.deposit_required);
+  // Collect all deposit provider types needed
+  const neededProviders = new Set<string>();
+  for (const s of services) {
+    if (s.deposit) {
+      for (const p of s.deposit.providers) {
+        neededProviders.add(p);
+      }
+    }
+  }
 
-  if (anyDepositRequired) {
+  // Initialize deposit providers
+  if (neededProviders.has('stripe')) {
     if (!config.stripeSecretKey) {
       throw new Error(
-        'STRIPE_SECRET_KEY environment variable is required when any service has deposit_required: true'
+        'STRIPE_SECRET_KEY environment variable is required when any service accepts stripe deposits'
       );
     }
-    initStripe(config.stripeSecretKey);
-    console.log('Stripe initialized for deposit holds');
+    registerProvider(new StripeDepositProvider(config.stripeSecretKey));
+    console.log('Stripe deposit provider initialized');
+  }
+
+  if (neededProviders.has('usdc_base')) {
+    if (!config.usdcWalletAddress) {
+      throw new Error(
+        'USDC_WALLET_ADDRESS environment variable is required when any service accepts usdc_base deposits'
+      );
+    }
+    registerProvider(
+      new UsdcBaseDepositProvider(
+        config.usdcWalletAddress,
+        config.baseRpcUrl,
+        config.gbpUsdRate
+      )
+    );
+    console.log('USDC (Base L2) deposit provider initialized');
+  }
+
+  // Validate all service-referenced providers are registered
+  for (const s of services) {
+    if (s.deposit) {
+      for (const p of s.deposit.providers) {
+        if (!getRegisteredProviderTypes().includes(p)) {
+          throw new Error(
+            `Service "${s.name}" references unknown deposit provider "${p}". ` +
+              `Registered providers: ${getRegisteredProviderTypes().join(', ') || 'none'}`
+          );
+        }
+      }
+    }
   }
 
   // Initialize database
@@ -46,7 +89,7 @@ async function main(): Promise<void> {
   });
 
   // Register routes — deposit-aware version if any service needs deposits
-  if (anyDepositRequired) {
+  if (neededProviders.size > 0) {
     registerDepositRoutes(app, config, services, prisma);
   } else {
     registerRoutes(app, config, services, prisma);
@@ -71,8 +114,8 @@ async function main(): Promise<void> {
     console.log(`  Health:     http://localhost:${config.port}/health`);
     console.log(`  Services:   http://localhost:${config.port}/services`);
     console.log(`  Discovery:  http://localhost:${config.port}/.well-known/inverseclaw`);
-    if (anyDepositRequired) {
-      console.log(`  Deposits:   enabled (Stripe)`);
+    if (neededProviders.size > 0) {
+      console.log(`  Deposits:   ${Array.from(neededProviders).join(', ')}`);
     }
     console.log('');
   } catch (err) {

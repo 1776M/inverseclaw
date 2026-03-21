@@ -54,8 +54,8 @@ export const TaskStatusWithDeposit = z.enum([
 export type TaskStatusWithDeposit = z.infer<typeof TaskStatusWithDeposit>;
 
 export const ConfirmDepositBody = z.object({
-  payment_intent_id: z.string().min(1),
-});
+  provider: z.string().min(1),
+}).passthrough();
 export type ConfirmDepositBody = z.infer<typeof ConfirmDepositBody>;
 
 const DEPOSIT_TRANSITIONS: Record<string, string[]> = {

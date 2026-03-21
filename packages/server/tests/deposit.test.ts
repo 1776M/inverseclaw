@@ -385,17 +385,7 @@ describe('Full lifecycle with Stripe deposit', () => {
     }
   });
 
-  it('Step 4: Business releases deposit', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: `/tasks/${taskId}/deposit/release`,
-      headers: { authorization: `Bearer ${TEST_CONFIG.businessApiKey}` },
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().released).toBe(true);
-  });
-
-  it('Step 5: Verify final state', async () => {
+  it('Step 4: Deposit was auto-released on completion', async () => {
     const res = await app.inject({ method: 'GET', url: `/tasks/${taskId}` });
     const body = res.json();
     expect(body.status).toBe('completed');
@@ -403,6 +393,16 @@ describe('Full lifecycle with Stripe deposit', () => {
     expect(body.deposit_status).toBe('released');
     const statuses = body.events.map((e: any) => e.status);
     expect(statuses).toEqual(['pending_deposit', 'pending', 'accepted', 'in_progress', 'completed']);
+  });
+
+  it('Step 5: Manual release returns 409 (already released)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/tasks/${taskId}/deposit/release`,
+      headers: { authorization: `Bearer ${TEST_CONFIG.businessApiKey}` },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('INVALID_DEPOSIT_STATE');
   });
 });
 

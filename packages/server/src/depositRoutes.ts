@@ -307,6 +307,26 @@ export function registerDepositRoutes(
         }
       }
 
+      // Auto-release deposit when task completes or business cancels (after deposit was confirmed)
+      if (
+        (body.status === 'completed' || body.status === 'cancelled') &&
+        task.depositRequired &&
+        task.depositStatus === 'held' &&
+        task.depositProvider &&
+        task.depositProviderId
+      ) {
+        try {
+          const provider = getProvider(task.depositProvider);
+          await provider.release(task.depositProviderId);
+          await prisma.task.update({
+            where: { taskId: task_id },
+            data: { depositStatus: 'released' },
+          });
+        } catch {
+          // Best effort — log but don't fail the status update
+        }
+      }
+
       return { updated: true };
     }
   );

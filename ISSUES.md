@@ -50,7 +50,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** The documentation says deposits release on normal completion, but the code doesn't do it. When a business pushes a task to `completed`, there is no automatic call to `provider.release()`. The business must separately call `POST /tasks/:id/deposit/release`. If they forget, Stripe holds stay for 7 days. For USDC, the funds are never returned.
 - **Fix:** In the `POST /tasks/:task_id/events` handler, when the new status is `completed` or `cancelled` (by business), auto-call `provider.release()` and set `depositStatus = 'released'`.
 - **Effort:** Small
-- **Status:** Open
+- **Status:** Fixed
 
 ### #7 No rate limiting on any endpoint
 - **Files:** All route handlers
@@ -175,4 +175,5 @@ Identified 2026-03-21. Work through these before any public launch.
 | #2 USDC tx replay + amount | 2026-03-21 | f4696f9 | Added tx hash dedup (in-memory Set), amount check (>= 90% of expected), expected amount tracking per deposit |
 | #3 USDC release no-op | 2026-03-21 | 805eb0c | InverseClawEscrow contract + escrow mode in EvmUsdcProvider. Capture/release are real on-chain txs. Direct transfer mode kept as fallback with warning. |
 | #4 .well-known localhost | 2026-03-21 | 8e16c39 | Added PUBLIC_URL env var to AppConfig. Both routes.ts and depositRoutes.ts use it with localhost fallback. |
-| #5 pending_deposit cancel | 2026-03-21 | (see commit) | Added pending_deposit → cancelled transition. Cancelling voids provider deposits (best effort). 3 new tests. |
+| #5 pending_deposit cancel | 2026-03-21 | f51ffb4 | Added pending_deposit → cancelled transition. Cancelling voids provider deposits (best effort). 3 new tests. |
+| #6 Auto-release on complete | 2026-03-21 | (see commit) | Deposits auto-release when task reaches completed or cancelled (after confirmation). Manual release returns 409 if already released. |

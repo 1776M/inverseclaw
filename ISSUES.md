@@ -57,7 +57,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** Zero rate limiting. `POST /tasks` accepts unlimited submissions from any IP. An attacker can flood the server with fake tasks, and for deposit services, create unlimited Stripe PaymentIntents on the business's account.
 - **Fix:** Add `@fastify/rate-limit` plugin. Sensible defaults: 100 req/hour for search/read, 10 req/hour for task submission per IP.
 - **Effort:** Small
-- **Status:** Open
+- **Status:** Fixed
 
 ### #8 GDPR non-compliance
 - **Files:** `packages/server/prisma/schema.prisma`, route handlers
@@ -176,4 +176,5 @@ Identified 2026-03-21. Work through these before any public launch.
 | #3 USDC release no-op | 2026-03-21 | 805eb0c | InverseClawEscrow contract + escrow mode in EvmUsdcProvider. Capture/release are real on-chain txs. Direct transfer mode kept as fallback with warning. |
 | #4 .well-known localhost | 2026-03-21 | 8e16c39 | Added PUBLIC_URL env var to AppConfig. Both routes.ts and depositRoutes.ts use it with localhost fallback. |
 | #5 pending_deposit cancel | 2026-03-21 | f51ffb4 | Added pending_deposit → cancelled transition. Cancelling voids provider deposits (best effort). 3 new tests. |
-| #6 Auto-release on complete | 2026-03-21 | (see commit) | Deposits auto-release when task reaches completed or cancelled (after confirmation). Manual release returns 409 if already released. |
+| #6 Auto-release on complete | 2026-03-21 | c1c9c96 | Deposits auto-release when task reaches completed or cancelled (after confirmation). Manual release returns 409 if already released. |
+| #7 Rate limiting | 2026-03-21 | (see commit) | @fastify/rate-limit: 100 req/min global, 10 req/min on POST /tasks per IP. |

@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import { PrismaClient } from '@prisma/client';
 import { loadConfig } from './config.js';
 import { loadServices } from './services.js';
@@ -90,6 +91,19 @@ async function main(): Promise<void> {
         options: { translateTime: 'HH:MM:ss', ignore: 'pid,hostname' },
       },
     },
+  });
+
+  // Rate limiting — protect against spam and abuse
+  await app.register(rateLimit, {
+    global: true,
+    max: (request) => {
+      // Tighter limit on task creation (10/min) to prevent spam
+      if (request.method === 'POST' && request.url === '/tasks') return 10;
+      // Standard limit for all other endpoints (100/min)
+      return 100;
+    },
+    timeWindow: '1 minute',
+    keyGenerator: (request) => request.ip,
   });
 
   // Register routes — deposit-aware version if any service needs deposits

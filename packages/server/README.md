@@ -367,16 +367,114 @@ Both capture and release require your Business API Key (`Authorization: Bearer <
 
 ### Services Without Deposits
 
-If a service does not have `deposit_required: true` (or the field is absent), it works exactly as it always has:
+If a service does not have a `deposit` block, it works exactly as it always has:
 
 - Task starts in `pending` status immediately
-- No Stripe interaction
-- No `stripe_client_secret` in the response
+- No payment provider interaction
 - Full lifecycle: `pending → accepted → in_progress → completed`
 
 You can mix deposit and non-deposit services freely. Each service is independent.
 
-If **none** of your services require deposits, you do not need Stripe at all — don't set `STRIPE_SECRET_KEY` and the server runs without any Stripe dependency.
+If **none** of your services have deposits, you don't need Stripe or USDC at all — the server runs with zero payment dependencies.
+
+### Testing Deposits
+
+Before going live, you should test that your deposit setup works end to end.
+
+#### Testing Stripe deposits
+
+Stripe has a built-in test mode. Use a test secret key (`sk_test_...`) instead of your live key:
+
+```bash
+STRIPE_SECRET_KEY=sk_test_your_test_key_here
+```
+
+Then use Stripe's [test card numbers](https://docs.stripe.com/testing#cards) to simulate payments:
+
+- `4242 4242 4242 4242` — succeeds
+- `4000 0000 0000 0002` — declines
+
+Everything works exactly like production, but no real money moves. Switch to your `sk_live_` key when you're ready.
+
+#### Testing USDC deposits
+
+Use Base Sepolia (testnet) instead of Base mainnet. Get free testnet USDC from a faucet.
+
+In your `.env`:
+
+```bash
+# Use testnet chain ID and RPC
+USDC_WALLET_ADDRESS=0xYourTestWallet
+BASE_RPC_URL=https://sepolia.base.org
+```
+
+And in `src/index.ts`, register the testnet provider instead of the default:
+
+```typescript
+import { EvmUsdcProvider } from './providers/usdc.js';
+
+registerProvider(new EvmUsdcProvider({
+  chainId: 84532,  // Base Sepolia testnet
+  walletAddress: config.usdcWalletAddress!,
+  rpcUrl: 'https://sepolia.base.org',
+  usdcAddress: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // USDC on Base Sepolia
+  providerType: 'usdc_base',  // keep the same type name so services.yaml doesn't change
+}));
+```
+
+Send testnet USDC to your wallet, then use the tx hash to confirm the deposit. When you're ready for production, remove the override and the default Base mainnet config takes over.
+
+### Using Other EVM Chains
+
+The USDC deposit provider works on any EVM chain, not just Base. The `EvmUsdcProvider` class comes pre-configured for five chains:
+
+| Chain | Chain ID | Provider type (auto-generated) |
+|-------|----------|-------------------------------|
+| Base | 8453 | `usdc_base` |
+| Ethereum | 1 | `usdc_ethereum` |
+| Arbitrum | 42161 | `usdc_arbitrum_one` |
+| Optimism | 10 | `usdc_op_mainnet` |
+| Polygon | 137 | `usdc_polygon` |
+
+To accept USDC on a different chain, register the provider in `src/index.ts`:
+
+```typescript
+import { EvmUsdcProvider } from './providers/usdc.js';
+
+// Example: accept USDC on Arbitrum
+registerProvider(new EvmUsdcProvider({
+  chainId: 42161,
+  walletAddress: process.env.USDC_WALLET_ADDRESS!,
+}));
+```
+
+Then reference it in `services.yaml`:
+
+```yaml
+deposit:
+  amount_pence: 1500
+  providers: [stripe, usdc_arbitrum_one]
+```
+
+For chains not in the pre-configured list, provide the USDC contract address and RPC URL:
+
+```typescript
+registerProvider(new EvmUsdcProvider({
+  chainId: 43114,  // Avalanche C-Chain
+  walletAddress: process.env.USDC_WALLET_ADDRESS!,
+  usdcAddress: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
+  rpcUrl: 'https://api.avax.network/ext/bc/C/rpc',
+  providerType: 'usdc_avalanche',  // your choice of name
+}));
+```
+
+```yaml
+deposit:
+  amount_pence: 1500
+  providers: [usdc_avalanche]
+```
+
+The provider handles USDC contract address lookup, RPC connection, and on-chain transaction verification automatically. All EVM chains use the same ERC20 Transfer event format, so the verification logic is identical.
 
 ---
 

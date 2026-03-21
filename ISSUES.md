@@ -154,16 +154,20 @@ Identified 2026-03-21. Work through these before any public launch.
 ## Business / Adoption Risks (not code fixes)
 
 ### #21 Cold start problem
-- Needs simultaneous business supply, agent adoption, user demand, and index coverage. The onboarding fee model generates supply but not demand.
+- Needs simultaneous business supply, agent adoption, user demand, and index coverage.
+- **Status:** Closed — influencer outreach to bootstrap demand. Onboarding service seeds supply.
 
 ### #22 Setup too complex for target users
-- A plumber is unlikely to edit YAML files and run Docker. The onboarding service mitigates this but limits organic adoption.
+- A plumber is unlikely to edit YAML files and run Docker.
+- **Status:** Closed — paid onboarding service handles setup for non-technical businesses. This is the business model.
 
 ### #23 No business dashboard or UI
-- All business operations require direct API calls with Bearer tokens. Unusable without a frontend.
+- All business operations require direct API calls with Bearer tokens.
+- **Status:** Closed — the protocol is for AI agents, not humans. Businesses get webhook alerts (email/Slack) for incoming orders.
 
 ### #24 Competitive threats
-- If Google extends UCP to cover services, or if existing marketplaces add agent APIs, the protocol could be bypassed entirely.
+- If major players add agent-friendly APIs for services, the protocol could be bypassed.
+- **Status:** Closed — open source, not competing. The protocol wins if anyone adopts it.
 
 ---
 

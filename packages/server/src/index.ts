@@ -56,7 +56,6 @@ async function main(): Promise<void> {
     const usdcProvider = new UsdcBaseDepositProvider(
       config.usdcWalletAddress,
       config.baseRpcUrl,
-      config.gbpUsdRate,
       config.usdcEscrowAddress,
       config.businessPrivateKey
     );

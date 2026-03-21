@@ -102,7 +102,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** The USDC provider uses a fixed GBP/USD rate set at server startup. It never updates. GBP/USD can move 2-5% in a week. Customers will systematically overpay or underpay.
 - **Fix:** (a) Short term: document the limitation clearly. (b) Long term: fetch rate from a price API on each deposit creation, with a cached fallback.
 - **Effort:** Small (docs) to Medium (live rate)
-- **Status:** Open
+- **Status:** Fixed — eliminated the problem entirely. All deposits are now in USD. No currency conversion needed.
 
 ### #14 No HTTPS enforcement
 - **Problem:** Server listens on HTTP. API keys and PII transmitted in cleartext. The README mentions reverse proxy but doesn't enforce or warn.
@@ -186,3 +186,4 @@ Identified 2026-03-21. Work through these before any public launch.
 | #15 Max length fields | 2026-03-21 | (see commit) | Added .max() to all text fields in Zod schemas. |
 | #18 CORS | 2026-03-21 | (see commit) | @fastify/cors with CORS_ORIGIN env var (default: all origins). |
 | #19 Timing-safe key | 2026-03-21 | (see commit) | crypto.timingSafeEqual for all API key comparisons. |
+| #13 Fixed GBP/USD rate | 2026-03-21 | (see commit) | Eliminated — all deposits now in USD cents. No conversion needed. |

@@ -27,7 +27,7 @@ export interface DepositProvider {
    * to complete it on the customer's side.
    */
   createDeposit(params: {
-    amountPence: number;
+    amountCents: number;
     description: string;
     taskId: string;
   }): Promise<CreateDepositResult>;

@@ -25,7 +25,7 @@ export type Service = z.infer<typeof ServiceSchema>;
 // --- Deposit hold extensions (v1.1, provider-agnostic) ---
 
 const DepositConfigSchema = z.object({
-  amount_pence: z.number().int().positive(),
+  amount_cents: z.number().int().positive(),
   providers: z.array(z.string().min(1)).min(1, 'At least one deposit provider required'),
 });
 

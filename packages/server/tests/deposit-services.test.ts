@@ -8,11 +8,11 @@ describe('ExtendedServiceSchema (provider-agnostic)', () => {
     const result = ExtendedServiceSchema.safeParse({
       name: 'Oven Cleaning',
       description: 'Professional oven cleaning',
-      deposit: { amount_pence: 1500, providers: ['stripe'] },
+      deposit: { amount_cents: 1500, providers: ['stripe'] },
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.deposit?.amount_pence).toBe(1500);
+      expect(result.data.deposit?.amount_cents).toBe(1500);
       expect(result.data.deposit?.providers).toEqual(['stripe']);
     }
   });
@@ -21,7 +21,7 @@ describe('ExtendedServiceSchema (provider-agnostic)', () => {
     const result = ExtendedServiceSchema.safeParse({
       name: 'Plumbing',
       description: 'Emergency plumbing',
-      deposit: { amount_pence: 3000, providers: ['stripe', 'usdc_base'] },
+      deposit: { amount_cents: 3000, providers: ['stripe', 'usdc_base'] },
     });
     expect(result.success).toBe(true);
   });
@@ -41,12 +41,12 @@ describe('ExtendedServiceSchema (provider-agnostic)', () => {
     const result = ExtendedServiceSchema.safeParse({
       name: 'Cleaning',
       description: 'Cleaning service',
-      deposit: { amount_pence: 1000, providers: [] },
+      deposit: { amount_cents: 1000, providers: [] },
     });
     expect(result.success).toBe(false);
   });
 
-  it('should reject deposit without amount_pence', () => {
+  it('should reject deposit without amount_cents', () => {
     const result = ExtendedServiceSchema.safeParse({
       name: 'Cleaning',
       description: 'Cleaning service',
@@ -59,7 +59,7 @@ describe('ExtendedServiceSchema (provider-agnostic)', () => {
     const result = ExtendedServiceSchema.safeParse({
       name: 'Cleaning',
       description: 'Cleaning service',
-      deposit: { amount_pence: -500, providers: ['stripe'] },
+      deposit: { amount_cents: -500, providers: ['stripe'] },
     });
     expect(result.success).toBe(false);
   });
@@ -69,7 +69,7 @@ describe('ExtendedServiceSchema (provider-agnostic)', () => {
       name: 'Oven Cleaning',
       description: 'Professional cleaning',
       service_area: { country: 'GB', regions: ['M'] },
-      deposit: { amount_pence: 2000, providers: ['usdc_base'] },
+      deposit: { amount_cents: 2000, providers: ['usdc_base'] },
     });
     expect(result.success).toBe(true);
   });
@@ -99,14 +99,14 @@ services:
   - name: Oven Cleaning
     description: Professional cleaning
     deposit:
-      amount_pence: 1500
+      amount_cents: 1500
       providers: [stripe, usdc_base]
   - name: Plumbing
     description: Emergency plumbing
 `);
     const services = loadServicesWithDeposit(path);
     expect(services).toHaveLength(2);
-    expect(services[0].deposit?.amount_pence).toBe(1500);
+    expect(services[0].deposit?.amount_cents).toBe(1500);
     expect(services[0].deposit?.providers).toEqual(['stripe', 'usdc_base']);
     expect(services[1].deposit).toBeUndefined();
   });

@@ -10,13 +10,13 @@ export class StripeDepositProvider implements DepositProvider {
   }
 
   async createDeposit(params: {
-    amountPence: number;
+    amountCents: number;
     description: string;
     taskId: string;
   }): Promise<CreateDepositResult> {
     const intent = await this.stripe.paymentIntents.create({
-      amount: params.amountPence,
-      currency: 'gbp',
+      amount: params.amountCents,
+      currency: 'usd',
       capture_method: 'manual', // pre-auth hold, not immediate charge
       description: params.description,
     });

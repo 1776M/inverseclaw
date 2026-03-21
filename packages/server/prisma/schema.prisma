@@ -18,7 +18,7 @@ model Task {
   contactEmail   String?     @map("contact_email")
   status         String      @default("pending")
   depositRequired       Boolean  @default(false) @map("deposit_required")
-  depositAmountPence    Int?     @map("deposit_amount_pence")
+  depositAmountCents    Int?     @map("deposit_amount_cents")
   depositProvider       String?  @map("deposit_provider")
   depositProviderId     String?  @map("deposit_provider_id")
   depositInitData       String?  @map("deposit_init_data")

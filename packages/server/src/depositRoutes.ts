@@ -64,7 +64,7 @@ export function registerDepositRoutes(
       description: s.description,
       service_area: s.service_area ?? null,
       deposit: s.deposit
-        ? { amount_pence: s.deposit.amount_pence, providers: s.deposit.providers }
+        ? { amount_cents: s.deposit.amount_cents, providers: s.deposit.providers }
         : null,
     }));
   });
@@ -84,7 +84,7 @@ export function registerDepositRoutes(
         description: s.description,
         service_area: s.service_area ?? null,
         deposit: s.deposit
-          ? { amount_pence: s.deposit.amount_pence, providers: s.deposit.providers }
+          ? { amount_cents: s.deposit.amount_cents, providers: s.deposit.providers }
           : null,
       })),
       presence_urls: config.presenceUrls,
@@ -139,7 +139,7 @@ export function registerDepositRoutes(
       for (const providerType of deposit.providers) {
         const provider = getProvider(providerType);
         const result = await provider.createDeposit({
-          amountPence: deposit.amount_pence,
+          amountCents: deposit.amount_cents,
           description: `Inverse Claw deposit: ${matchedService.name} (${transactionId})`,
           taskId,
         });
@@ -158,13 +158,13 @@ export function registerDepositRoutes(
           contactEmail: body.contact.email ?? null,
           status: 'pending_deposit',
           depositRequired: true,
-          depositAmountPence: deposit.amount_pence,
+          depositAmountCents: deposit.amount_cents,
           depositInitData: JSON.stringify(depositInitData),
           depositStatus: null,
           events: {
             create: {
               status: 'pending_deposit',
-              message: `Task submitted — deposit of £${(deposit.amount_pence / 100).toFixed(2)} required`,
+              message: `Task submitted — deposit of $${(deposit.amount_cents / 100).toFixed(2)} required`,
             },
           },
         },
@@ -175,7 +175,7 @@ export function registerDepositRoutes(
         transaction_id: transactionId,
         service_name: matchedService.name,
         status: 'pending_deposit',
-        deposit_amount_pence: deposit.amount_pence,
+        deposit_amount_cents: deposit.amount_cents,
         contact: body.contact,
         details: body.details,
       });
@@ -185,7 +185,7 @@ export function registerDepositRoutes(
         task_id: taskId,
         transaction_id: transactionId,
         status: 'pending_deposit',
-        deposit_amount_pence: deposit.amount_pence,
+        deposit_amount_cents: deposit.amount_cents,
         deposit_providers: depositProviders,
       };
     }
@@ -255,7 +255,7 @@ export function registerDepositRoutes(
       },
       status: task.status,
       deposit_required: task.depositRequired,
-      deposit_amount_pence: task.depositAmountPence,
+      deposit_amount_cents: task.depositAmountCents,
       deposit_provider: task.depositProvider,
       deposit_status: task.depositStatus,
       created_at: task.createdAt.toISOString(),
@@ -495,7 +495,7 @@ export function registerDepositRoutes(
         task_id,
         status: 'pending',
         provider: providerType,
-        deposit_amount_pence: task.depositAmountPence,
+        deposit_amount_cents: task.depositAmountCents,
       });
 
       return { updated: true, status: 'pending' };

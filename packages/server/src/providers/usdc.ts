@@ -16,9 +16,6 @@ import { ESCROW_ABI, EscrowStatus } from '../escrowAbi.js';
 
 const USDC_DECIMALS = 6;
 
-/** Default GBP to USD rate. Override with GBP_USD_RATE env var. */
-const DEFAULT_GBP_USD_RATE = 1.27;
-
 /** Known USDC contract addresses per chain ID */
 const USDC_ADDRESSES: Record<number, Address> = {
   [base.id]:     '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',  // Base
@@ -58,8 +55,6 @@ export interface EvmUsdcConfig {
   walletAddress: string;
   /** RPC endpoint URL (optional, has defaults for known chains) */
   rpcUrl?: string;
-  /** GBP to USD conversion rate (optional, default 1.27) */
-  gbpUsdRate?: number;
   /** USDC contract address (optional, auto-detected for known chains) */
   usdcAddress?: string;
   /** Provider type identifier (optional, auto-generated as usdc_{chain_name}) */
@@ -87,7 +82,6 @@ export class EvmUsdcProvider implements DepositProvider {
   readonly escrowMode: boolean;
   private walletAddress: Address;
   private rpcUrl: string;
-  private gbpUsdRate: number;
   private usdcAddress: Address;
   private chainId: number;
   private chain: Chain;
@@ -104,7 +98,6 @@ export class EvmUsdcProvider implements DepositProvider {
   constructor(config: EvmUsdcConfig) {
     this.chainId = config.chainId;
     this.walletAddress = config.walletAddress as Address;
-    this.gbpUsdRate = config.gbpUsdRate ?? DEFAULT_GBP_USD_RATE;
 
     // Resolve chain object
     const chain = CHAIN_OBJECTS[config.chainId];
@@ -147,17 +140,16 @@ export class EvmUsdcProvider implements DepositProvider {
   }
 
   async createDeposit(params: {
-    amountPence: number;
+    amountCents: number;
     description: string;
     taskId: string;
   }): Promise<CreateDepositResult> {
     const depositReference = `dep_${randomBytes(12).toString('hex')}`;
-    const amountUsdc = this.penceToUsdc(params.amountPence);
+    const amountUsdc = (params.amountCents / 100).toFixed(2);
 
-    // Store expected amount for verification during confirmation
-    // Use 90% of expected as minimum to allow for exchange rate fluctuation
+    // Store expected amount for verification (USDC has 6 decimals)
     const expectedRaw = Math.round(parseFloat(amountUsdc) * 10 ** USDC_DECIMALS);
-    const minimumAmount = BigInt(Math.floor(expectedRaw * 0.9));
+    const minimumAmount = BigInt(expectedRaw);
     this.expectedAmounts.set(depositReference, minimumAmount);
 
     if (this.escrowMode) {
@@ -339,11 +331,6 @@ export class EvmUsdcProvider implements DepositProvider {
     await publicClient.waitForTransactionReceipt({ hash });
   }
 
-  private penceToUsdc(pence: number): string {
-    const gbp = pence / 100;
-    const usd = gbp * this.gbpUsdRate;
-    return usd.toFixed(2);
-  }
 }
 
 /**
@@ -354,7 +341,6 @@ export class UsdcBaseDepositProvider extends EvmUsdcProvider {
   constructor(
     walletAddress: string,
     rpcUrl?: string,
-    gbpUsdRate?: number,
     escrowAddress?: string,
     businessPrivateKey?: string
   ) {
@@ -362,7 +348,6 @@ export class UsdcBaseDepositProvider extends EvmUsdcProvider {
       chainId: base.id,
       walletAddress,
       rpcUrl,
-      gbpUsdRate,
       providerType: 'usdc_base',
       escrowAddress,
       businessPrivateKey,

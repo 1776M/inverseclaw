@@ -107,7 +107,7 @@ const TEST_SERVICES: ExtendedService[] = [
     description: 'Professional oven cleaning',
     service_area: { country: 'GB', regions: ['M', 'SK'] },
     deposit: {
-      amount_pence: 1500,
+      amount_cents: 1500,
       providers: ['stripe', 'usdc_base'],
     },
   },
@@ -170,7 +170,7 @@ describe('POST /tasks (multi-provider deposit)', () => {
     expect(res.statusCode).toBe(201);
     const body = res.json();
     expect(body.status).toBe('pending_deposit');
-    expect(body.deposit_amount_pence).toBe(1500);
+    expect(body.deposit_amount_cents).toBe(1500);
 
     // Should have both providers
     expect(body.deposit_providers).toBeDefined();
@@ -534,7 +534,7 @@ describe('GET /services (provider-agnostic)', () => {
     const res = await app.inject({ method: 'GET', url: '/services' });
     const services = res.json();
     expect(services[0].deposit).toEqual({
-      amount_pence: 1500,
+      amount_cents: 1500,
       providers: ['stripe', 'usdc_base'],
     });
     expect(services[1].deposit).toBeNull();

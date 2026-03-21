@@ -171,6 +171,17 @@ Identified 2026-03-21. Work through these before any public launch.
 
 ---
 
+## TODO — Future Work
+
+### #25 Write tests for InverseClawEscrow smart contract
+- **File:** `packages/contracts/src/InverseClawEscrow.sol`
+- **Problem:** Contract is written but has no test suite. Must be tested before deployment.
+- **Fix:** Add Hardhat or Foundry test suite covering: deposit, release, capture, expiry, access control, double-spend prevention, zero-amount rejection.
+- **Effort:** Medium
+- **Status:** Open
+
+---
+
 ## Resolution Log
 
 | Issue | Date Fixed | Commit | Notes |

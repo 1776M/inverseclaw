@@ -175,6 +175,7 @@ The node ID and API key persist across restarts in `data/node.json`. If you lose
 | `USDC_WALLET_ADDRESS` | Conditional | — | Your wallet address on Base L2. **Required only if any service lists `usdc_base` in its deposit providers.** |
 | `BASE_RPC_URL` | No | `https://mainnet.base.org` | Base L2 RPC endpoint for USDC transaction verification |
 | `GBP_USD_RATE` | No | `1.27` | GBP to USD conversion rate for USDC deposit amounts |
+| `WEBHOOK_URL` | No | — | URL to receive POST notifications when tasks are created, updated, or deposits confirmed. Works with Slack, Zapier, Make, or any HTTP endpoint. |
 | `INDEX_ENDPOINT` | No | — | Inverse Claw Index URL for auto-registration |
 | `INDEX_API_KEY` | No | — | Write API key from index registration |
 | `AUTO_PUBLISH` | No | `false` | Set to `true` to auto-register with the index on startup |
@@ -1042,6 +1043,76 @@ The `DELETE /tasks/:task_id` endpoint (authenticated with your Business API Key)
 
 ---
 
+## Webhooks
+
+Set `WEBHOOK_URL` to receive real-time notifications when tasks are created, updated, or deposits confirmed. The server POSTs a JSON payload to your URL — works with Slack, Zapier, Make, custom dashboards, or any HTTP endpoint.
+
+```bash
+WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../xxx
+# or
+WEBHOOK_URL=https://hooks.zapier.com/hooks/catch/123/abc/
+# or
+WEBHOOK_URL=https://yourdashboard.com/api/inverseclaw-webhook
+```
+
+### Events
+
+**`task.created`** — a customer's AI agent submitted a new task:
+
+```json
+{
+  "event": "task.created",
+  "timestamp": "2026-03-21T14:30:00.000Z",
+  "data": {
+    "task_id": "tsk_za3e7j6u97am",
+    "transaction_id": "ic_a3f9b2_20260321T143000_k7x9m",
+    "service_name": "Oven Cleaning",
+    "status": "pending",
+    "contact": { "name": "Jane Smith", "phone": "07700900123", "email": "jane@email.com" },
+    "details": "Double oven, postcode M1 2AB, prefer next week"
+  }
+}
+```
+
+**`task.updated`** — a task status changed (you accepted, started work, completed, etc.):
+
+```json
+{
+  "event": "task.updated",
+  "timestamp": "2026-03-21T15:10:00.000Z",
+  "data": {
+    "task_id": "tsk_za3e7j6u97am",
+    "status": "accepted",
+    "previous_status": "pending",
+    "message": "Booked for Tuesday 25th March, 10am. £65."
+  }
+}
+```
+
+**`deposit.confirmed`** — a customer's deposit was verified:
+
+```json
+{
+  "event": "deposit.confirmed",
+  "timestamp": "2026-03-21T14:32:00.000Z",
+  "data": {
+    "task_id": "tsk_za3e7j6u97am",
+    "status": "pending",
+    "provider": "stripe",
+    "deposit_amount_pence": 1500
+  }
+}
+```
+
+### Behaviour
+
+- **Fire-and-forget** — webhook failures are logged but never block the API response
+- **5-second timeout** — if your endpoint doesn't respond within 5 seconds, the request is dropped
+- **No retries** — if a webhook fails, it is not retried. For guaranteed delivery, use a message queue behind your webhook endpoint
+- **Optional** — if `WEBHOOK_URL` is not set, no webhooks are sent and no errors occur
+
+---
+
 ## FAQ
 
 **Do I need Stripe or USDC?**
@@ -1067,6 +1138,9 @@ No. The deposit is a small amount to prove the customer has skin in the game. Ac
 
 **What currency are deposits in?**
 Stripe deposits are in GBP. USDC deposits are converted from GBP at a configurable rate (default 1.27 GBP/USD, override with `GBP_USD_RATE` env var).
+
+**Do I need to set up webhooks?**
+No. If `WEBHOOK_URL` is not set, no webhooks are sent and no errors occur. But without webhooks (or a dashboard), you won't know when tasks arrive — so it's strongly recommended.
 
 **Can I add my own deposit provider?**
 Yes. Implement the `DepositProvider` interface in `src/depositProvider.ts`, create your provider in `src/providers/`, and register it in `src/index.ts`. The server is designed to be extended.

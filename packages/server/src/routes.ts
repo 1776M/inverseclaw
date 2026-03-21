@@ -4,6 +4,7 @@ import type { Service } from './services.js';
 import { CreateTaskBody, PushEventBody, isValidTransition } from './schemas.js';
 import { generateTransactionId, generateTaskId } from './transaction.js';
 import { PrismaClient } from '@prisma/client';
+import type { WebhookNotifier } from './webhooks.js';
 
 const PROTOCOL_VERSION = '1.0.0';
 const SERVER_VERSION = '1.0.0';
@@ -22,7 +23,8 @@ export function registerRoutes(
   app: FastifyInstance,
   config: AppConfig,
   services: Service[],
-  prisma: PrismaClient
+  prisma: PrismaClient,
+  notify: WebhookNotifier = () => {}
 ): void {
   // GET /health
   app.get('/health', async () => {
@@ -106,6 +108,15 @@ export function registerRoutes(
           },
         },
       },
+    });
+
+    notify('task.created', {
+      task_id: taskId,
+      transaction_id: transactionId,
+      service_name: matchedService.name,
+      status: 'pending',
+      contact: body.contact,
+      details: body.details,
     });
 
     reply.status(201);
@@ -215,6 +226,13 @@ export function registerRoutes(
           data: { status: body.status },
         }),
       ]);
+
+      notify('task.updated', {
+        task_id,
+        status: body.status,
+        previous_status: task.status,
+        message: body.message ?? null,
+      });
 
       return { updated: true };
     }

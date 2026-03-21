@@ -20,6 +20,7 @@ import {
 import { generateTransactionId, generateTaskId } from './transaction.js';
 import { getProvider } from './depositProvider.js';
 import { PrismaClient } from '@prisma/client';
+import type { WebhookNotifier } from './webhooks.js';
 
 const PROTOCOL_VERSION = '1.0.0';
 const SERVER_VERSION = '1.0.0';
@@ -38,7 +39,8 @@ export function registerDepositRoutes(
   app: FastifyInstance,
   config: DepositConfig,
   services: ExtendedService[],
-  prisma: PrismaClient
+  prisma: PrismaClient,
+  notify: WebhookNotifier = () => {}
 ): void {
   // GET /health
   app.get('/health', async () => {
@@ -152,6 +154,16 @@ export function registerDepositRoutes(
         },
       });
 
+      notify('task.created', {
+        task_id: taskId,
+        transaction_id: transactionId,
+        service_name: matchedService.name,
+        status: 'pending_deposit',
+        deposit_amount_pence: deposit.amount_pence,
+        contact: body.contact,
+        details: body.details,
+      });
+
       reply.status(201);
       return {
         task_id: taskId,
@@ -180,6 +192,15 @@ export function registerDepositRoutes(
           },
         },
       },
+    });
+
+    notify('task.created', {
+      task_id: taskId,
+      transaction_id: transactionId,
+      service_name: matchedService.name,
+      status: 'pending',
+      contact: body.contact,
+      details: body.details,
     });
 
     reply.status(201);
@@ -327,6 +348,13 @@ export function registerDepositRoutes(
         }
       }
 
+      notify('task.updated', {
+        task_id,
+        status: body.status,
+        previous_status: task.status,
+        message: body.message ?? null,
+      });
+
       return { updated: true };
     }
   );
@@ -424,6 +452,13 @@ export function registerDepositRoutes(
           },
         }),
       ]);
+
+      notify('deposit.confirmed', {
+        task_id,
+        status: 'pending',
+        provider: providerType,
+        deposit_amount_pence: task.depositAmountPence,
+      });
 
       return { updated: true, status: 'pending' };
     }

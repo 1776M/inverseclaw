@@ -8,6 +8,7 @@ import { loadServicesWithDeposit } from './services.js';
 import { registerRoutes } from './routes.js';
 import { registerDepositRoutes } from './depositRoutes.js';
 import { registerProvider, getRegisteredProviderTypes } from './depositProvider.js';
+import { createWebhookNotifier } from './webhooks.js';
 import { StripeDepositProvider } from './providers/stripe.js';
 import { UsdcBaseDepositProvider } from './providers/usdc.js';
 
@@ -106,11 +107,14 @@ async function main(): Promise<void> {
     keyGenerator: (request) => request.ip,
   });
 
+  // Set up webhook notifications (fire-and-forget)
+  const notify = createWebhookNotifier(config.webhookUrl);
+
   // Register routes — deposit-aware version if any service needs deposits
   if (neededProviders.size > 0) {
-    registerDepositRoutes(app, config, services, prisma);
+    registerDepositRoutes(app, config, services, prisma, notify);
   } else {
-    registerRoutes(app, config, services, prisma);
+    registerRoutes(app, config, services, prisma, notify);
   }
 
   // Graceful shutdown
@@ -134,6 +138,9 @@ async function main(): Promise<void> {
     console.log(`  Discovery:  http://localhost:${config.port}/.well-known/inverseclaw`);
     if (neededProviders.size > 0) {
       console.log(`  Deposits:   ${Array.from(neededProviders).join(', ')}`);
+    }
+    if (config.webhookUrl) {
+      console.log(`  Webhooks:   ${config.webhookUrl}`);
     }
     console.log('');
   } catch (err) {

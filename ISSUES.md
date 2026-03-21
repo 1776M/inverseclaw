@@ -70,7 +70,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** When a task is submitted, the business has no way to know. No email, no webhook, no SMS, no dashboard. A plumber has to poll their own API to see if someone booked them.
 - **Fix:** Add optional webhook support (simplest): business sets `WEBHOOK_URL` env var, server POSTs task events to it. Email notification can be added later.
 - **Effort:** Medium
-- **Status:** Open
+- **Status:** Fixed
 
 ---
 
@@ -178,4 +178,5 @@ Identified 2026-03-21. Work through these before any public launch.
 | #5 pending_deposit cancel | 2026-03-21 | f51ffb4 | Added pending_deposit → cancelled transition. Cancelling voids provider deposits (best effort). 3 new tests. |
 | #6 Auto-release on complete | 2026-03-21 | c1c9c96 | Deposits auto-release when task reaches completed or cancelled (after confirmation). Manual release returns 409 if already released. |
 | #7 Rate limiting | 2026-03-21 | 0ef3202 | @fastify/rate-limit: 100 req/min global, 10 req/min on POST /tasks per IP. |
-| #8 GDPR compliance | 2026-03-21 | (see commit) | DELETE /tasks/:id endpoint + Data Protection section in README. Business is data controller. |
+| #8 GDPR compliance | 2026-03-21 | 5c362a7 | DELETE /tasks/:id endpoint + Data Protection section in README. Business is data controller. |
+| #9 No notifications | 2026-03-21 | (see commit) | Webhook system: WEBHOOK_URL env var, fire-and-forget POST on task.created/task.updated/deposit.confirmed. |

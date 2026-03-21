@@ -71,6 +71,7 @@ export interface AppConfig {
   autoPublish: boolean;
   port: number;
   publicUrl?: string;
+  webhookUrl?: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -106,6 +107,7 @@ export function loadConfig(): AppConfig {
     autoPublish: process.env.AUTO_PUBLISH === 'true',
     port: parseInt(process.env.PORT ?? '3000', 10),
     publicUrl: process.env.PUBLIC_URL || undefined,
+    webhookUrl: process.env.WEBHOOK_URL || undefined,
   };
 }
 

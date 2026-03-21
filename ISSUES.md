@@ -121,13 +121,13 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** A scammer can create a Facebook page, a cheap website, and a Checkatrade listing in hours. The system checks that the node_id appears on the URL but creating fake presence is trivial. Domain age is useful but can be obtained with expired domains.
 - **Fix:** (a) Document the limitation honestly. (b) The index (not yet built) should implement deeper reputation checks. (c) Consider requiring minimum domain age or multiple independent platforms.
 - **Effort:** N/A (index not built yet)
-- **Status:** Open — design consideration for index
+- **Status:** Closed — design consideration for the index. Server-side research requirement mitigates this for now.
 
 ### #17 Stripe PaymentIntent expiry edge case
 - **Problem:** Stripe PaymentIntents with `capture_method: manual` must be captured within 7 days. If a task takes longer than 7 days from deposit to no-show capture, the PaymentIntent expires and cannot be captured.
 - **Fix:** Document the 7-day window. Consider re-creating the PaymentIntent if the task is still active after 5 days.
 - **Effort:** Small (docs) to Medium (auto-renewal)
-- **Status:** Open
+- **Status:** Closed — documented in README deposit section. 7-day window is a Stripe platform constraint, not a bug.
 
 ### #18 No CORS configuration
 - **Problem:** No CORS headers. Browser-based agents or future dashboards will be blocked. If CORS is opened wide, any webpage can submit tasks.
@@ -188,4 +188,6 @@ Identified 2026-03-21. Work through these before any public launch.
 | #19 Timing-safe key | 2026-03-21 | (see commit) | crypto.timingSafeEqual for all API key comparisons. |
 | #13 Fixed GBP/USD rate | 2026-03-21 | f0d0838 | Eliminated — all deposits now in USD cents. No conversion needed. |
 | #14 HTTPS enforcement | 2026-03-21 | — | Closed — addressed in production checklist docs. Reverse proxy handles TLS. |
-| #20 Chain reorg protection | 2026-03-21 | (see commit) | waitForTransactionReceipt with confirmations: 12 (L1) or 2 (L2). 2min timeout. |
+| #20 Chain reorg protection | 2026-03-21 | 287ccfa | waitForTransactionReceipt with confirmations: 12 (L1) or 2 (L2). 2min timeout. |
+| #16 Gameable presence URLs | 2026-03-21 | — | Closed — index concern. Server research requirement mitigates for now. |
+| #17 Stripe 7-day expiry | 2026-03-21 | — | Closed — documented in README. Platform constraint, not a bug. |

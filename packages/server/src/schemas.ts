@@ -39,3 +39,31 @@ export function isValidTransition(from: string, to: string): boolean {
   if (!allowed) return false;
   return allowed.includes(to);
 }
+
+// --- Deposit hold extensions (v1.1) ---
+
+export const TaskStatusWithDeposit = z.enum([
+  'pending_deposit',
+  'pending',
+  'accepted',
+  'in_progress',
+  'completed',
+  'declined',
+  'cancelled',
+]);
+export type TaskStatusWithDeposit = z.infer<typeof TaskStatusWithDeposit>;
+
+export const ConfirmDepositBody = z.object({
+  payment_intent_id: z.string().min(1),
+});
+export type ConfirmDepositBody = z.infer<typeof ConfirmDepositBody>;
+
+const DEPOSIT_TRANSITIONS: Record<string, string[]> = {
+  pending_deposit: ['pending'],
+};
+
+export function isValidDepositTransition(from: string, to: string): boolean {
+  const depositAllowed = DEPOSIT_TRANSITIONS[from];
+  if (depositAllowed) return depositAllowed.includes(to);
+  return isValidTransition(from, to);
+}

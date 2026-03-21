@@ -2,16 +2,33 @@ import Fastify from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { loadConfig } from './config.js';
 import { loadServices } from './services.js';
+import { loadDepositConfig } from './config.js';
+import { loadServicesWithDeposit } from './services.js';
 import { registerRoutes } from './routes.js';
+import { registerDepositRoutes } from './depositRoutes.js';
+import { initStripe } from './stripe.js';
 
 async function main(): Promise<void> {
-  // Load config and services
-  const config = loadConfig();
-  const services = loadServices(process.env.SERVICES_FILE);
+  // Load config and services (extended versions that support deposit fields)
+  const config = loadDepositConfig();
+  const services = loadServicesWithDeposit(process.env.SERVICES_FILE);
 
   console.log(`Loaded ${services.length} service(s) from services.yaml`);
   for (const s of services) {
-    console.log(`  - ${s.name}`);
+    console.log(`  - ${s.name}${s.deposit_required ? ` (deposit: £${(s.deposit_amount_pence! / 100).toFixed(2)})` : ''}`);
+  }
+
+  // Check if any service requires deposits
+  const anyDepositRequired = services.some((s) => s.deposit_required);
+
+  if (anyDepositRequired) {
+    if (!config.stripeSecretKey) {
+      throw new Error(
+        'STRIPE_SECRET_KEY environment variable is required when any service has deposit_required: true'
+      );
+    }
+    initStripe(config.stripeSecretKey);
+    console.log('Stripe initialized for deposit holds');
   }
 
   // Initialize database
@@ -28,8 +45,12 @@ async function main(): Promise<void> {
     },
   });
 
-  // Register routes
-  registerRoutes(app, config, services, prisma);
+  // Register routes — deposit-aware version if any service needs deposits
+  if (anyDepositRequired) {
+    registerDepositRoutes(app, config, services, prisma);
+  } else {
+    registerRoutes(app, config, services, prisma);
+  }
 
   // Graceful shutdown
   const shutdown = async (): Promise<void> => {
@@ -50,6 +71,9 @@ async function main(): Promise<void> {
     console.log(`  Health:     http://localhost:${config.port}/health`);
     console.log(`  Services:   http://localhost:${config.port}/services`);
     console.log(`  Discovery:  http://localhost:${config.port}/.well-known/inverseclaw`);
+    if (anyDepositRequired) {
+      console.log(`  Deposits:   enabled (Stripe)`);
+    }
     console.log('');
   } catch (err) {
     console.error('Failed to start server:', err);

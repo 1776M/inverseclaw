@@ -109,3 +109,17 @@ export function loadConfig(): AppConfig {
 
 export { saveNodeConfig };
 export type { NodeConfig };
+
+// --- Deposit hold extensions (v1.1) ---
+
+export interface DepositConfig extends AppConfig {
+  stripeSecretKey?: string;
+}
+
+export function loadDepositConfig(): DepositConfig {
+  const base = loadConfig();
+  return {
+    ...base,
+    stripeSecretKey: process.env.STRIPE_SECRET_KEY || undefined,
+  };
+}

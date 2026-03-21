@@ -53,6 +53,11 @@ const BUSINESS_SERVICES: Service[] = [
   },
 ];
 
+const VALID_RESEARCH = {
+  urls_checked: ['https://checkatrade.com/trades/cleanright', 'https://facebook.com/cleanrightltd'],
+  summary: 'CleanRight has 4.9 stars on Checkatrade with 120+ reviews. Active Facebook since 2019.',
+};
+
 let prisma: PrismaClient;
 let app: ReturnType<typeof Fastify>;
 
@@ -157,6 +162,7 @@ describe('Full protocol walkthrough', () => {
           phone: '07700900123',
           email: 'jane@email.com',
         },
+        research: VALID_RESEARCH,
       },
     });
 
@@ -371,6 +377,7 @@ describe('Declined task walkthrough', () => {
           name: 'Tom Baker',
           email: 'tom@email.com',
         },
+        research: VALID_RESEARCH,
       },
     });
 
@@ -427,6 +434,7 @@ describe('Cancelled task walkthrough', () => {
         service_name: 'Oven Cleaning',
         details: 'Single oven, M20 4BX, Wednesday.',
         contact: { name: 'Sarah Connor', phone: '07700900456' },
+        research: VALID_RESEARCH,
       },
     });
     taskId = res.json().task_id;

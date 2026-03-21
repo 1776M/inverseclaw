@@ -72,7 +72,6 @@ export interface AppConfig {
   port: number;
   publicUrl?: string;
   webhookUrl?: string;
-  researchRequired: boolean;
 }
 
 export function loadConfig(): AppConfig {
@@ -109,7 +108,6 @@ export function loadConfig(): AppConfig {
     port: parseInt(process.env.PORT ?? '3000', 10),
     publicUrl: process.env.PUBLIC_URL || undefined,
     webhookUrl: process.env.WEBHOOK_URL || undefined,
-    researchRequired: process.env.RESEARCH_REQUIRED !== 'false',
   };
 }
 

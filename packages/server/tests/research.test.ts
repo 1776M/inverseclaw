@@ -26,7 +26,6 @@ const TEST_CONFIG: AppConfig = {
   presenceUrls: ['https://checkatrade.com/trades/testbiz', 'https://facebook.com/testbiz'],
   autoPublish: false,
   port: 0,
-  researchRequired: true,
 };
 
 const TEST_SERVICES: Service[] = [
@@ -133,42 +132,5 @@ describe('Research requirement', () => {
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().task_id).toMatch(/^tsk_/);
-  });
-});
-
-describe('Research disabled', () => {
-  let appNoResearch: ReturnType<typeof Fastify>;
-
-  beforeAll(async () => {
-    appNoResearch = Fastify();
-    registerRoutes(
-      appNoResearch,
-      { ...TEST_CONFIG, researchRequired: false },
-      TEST_SERVICES,
-      prisma
-    );
-    await appNoResearch.ready();
-  });
-
-  afterAll(async () => {
-    await appNoResearch.close();
-  });
-
-  it('manifest should include research_required: false', async () => {
-    const res = await appNoResearch.inject({ method: 'GET', url: '/.well-known/inverseclaw' });
-    expect(res.json().research_required).toBe(false);
-  });
-
-  it('should accept task without research when disabled', async () => {
-    const res = await appNoResearch.inject({
-      method: 'POST',
-      url: '/tasks',
-      payload: {
-        service_name: 'Oven Cleaning',
-        details: 'Double oven',
-        contact: { name: 'Bob' },
-      },
-    });
-    expect(res.statusCode).toBe(201);
   });
 });

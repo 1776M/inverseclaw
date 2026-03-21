@@ -35,6 +35,11 @@ const TEST_SERVICES: Service[] = [
   },
 ];
 
+const VALID_RESEARCH = {
+  urls_checked: ['https://example.com'],
+  summary: 'Business verified on example.com',
+};
+
 let prisma: PrismaClient;
 let app: ReturnType<typeof Fastify>;
 
@@ -122,6 +127,7 @@ describe('POST /tasks', () => {
         service_name: 'Oven Cleaning',
         details: 'Double oven, M1 2AB, next week',
         contact: { name: 'Jane Smith', email: 'jane@test.com' },
+        research: VALID_RESEARCH,
       },
     });
     expect(res.statusCode).toBe(201);
@@ -139,6 +145,7 @@ describe('POST /tasks', () => {
         service_name: 'oven cleaning',
         details: 'Test',
         contact: { name: 'Test' },
+        research: VALID_RESEARCH,
       },
     });
     expect(res.statusCode).toBe(201);
@@ -152,6 +159,7 @@ describe('POST /tasks', () => {
         service_name: 'Rocket Launch',
         details: 'To the moon',
         contact: { name: 'Elon' },
+        research: VALID_RESEARCH,
       },
     });
     expect(res.statusCode).toBe(404);
@@ -180,6 +188,7 @@ describe('GET /tasks/:task_id', () => {
         service_name: 'Plumbing',
         details: 'Leaky tap in kitchen',
         contact: { name: 'Bob', phone: '07700900000' },
+        research: VALID_RESEARCH,
       },
     });
     taskId = res.json().task_id;
@@ -216,6 +225,7 @@ describe('POST /tasks/:task_id/events', () => {
         service_name: 'Oven Cleaning',
         details: 'Single oven',
         contact: { name: 'Alice' },
+        research: VALID_RESEARCH,
       },
     });
     taskId = res.json().task_id;

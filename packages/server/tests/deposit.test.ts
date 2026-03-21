@@ -117,6 +117,11 @@ const TEST_SERVICES: ExtendedService[] = [
   },
 ];
 
+const R = {
+  urls_checked: ['https://example.com'],
+  summary: 'Verified on example.com',
+};
+
 let prisma: PrismaClient;
 let app: ReturnType<typeof Fastify>;
 
@@ -159,7 +164,7 @@ describe('POST /tasks (multi-provider deposit)', () => {
       payload: {
         service_name: 'Oven Cleaning',
         details: 'Double oven, M1 2AB',
-        contact: { name: 'Jane', email: 'jane@test.com' },
+        contact: { name: 'Jane', email: 'jane@test.com' }, research: R,
       },
     });
     expect(res.statusCode).toBe(201);
@@ -186,7 +191,7 @@ describe('POST /tasks (multi-provider deposit)', () => {
       payload: {
         service_name: 'Plumbing',
         details: 'Leaky tap',
-        contact: { name: 'Bob' },
+        contact: { name: 'Bob' }, research: R,
       },
     });
     expect(res.statusCode).toBe(201);
@@ -202,7 +207,7 @@ describe('POST /tasks (multi-provider deposit)', () => {
       payload: {
         service_name: 'Rocket Launch',
         details: 'Moon',
-        contact: { name: 'Elon' },
+        contact: { name: 'Elon' }, research: R,
       },
     });
     expect(res.statusCode).toBe(404);
@@ -219,7 +224,7 @@ describe('Confirm deposit via Stripe', () => {
       payload: {
         service_name: 'Oven Cleaning',
         details: 'Single oven',
-        contact: { name: 'Alice' },
+        contact: { name: 'Alice' }, research: R,
       },
     });
     taskId = res.json().task_id;
@@ -257,7 +262,7 @@ describe('Confirm deposit via USDC', () => {
       payload: {
         service_name: 'Oven Cleaning',
         details: 'Range cooker',
-        contact: { name: 'Charlie' },
+        contact: { name: 'Charlie' }, research: R,
       },
     });
     taskId = res.json().task_id;
@@ -292,7 +297,7 @@ describe('Deposit confirmation edge cases', () => {
       payload: {
         service_name: 'Oven Cleaning',
         details: 'Test',
-        contact: { name: 'Dave' },
+        contact: { name: 'Dave' }, research: R,
       },
     });
     const taskId = res1.json().task_id;
@@ -313,7 +318,7 @@ describe('Deposit confirmation edge cases', () => {
       payload: {
         service_name: 'Plumbing',
         details: 'Test',
-        contact: { name: 'Eve' },
+        contact: { name: 'Eve' }, research: R,
       },
     });
     const taskId = res1.json().task_id;
@@ -333,7 +338,7 @@ describe('Deposit confirmation edge cases', () => {
       payload: {
         service_name: 'Oven Cleaning',
         details: 'Test',
-        contact: { name: 'Frank' },
+        contact: { name: 'Frank' }, research: R,
       },
     });
     const taskId = res1.json().task_id;
@@ -358,7 +363,7 @@ describe('Full lifecycle with Stripe deposit', () => {
       payload: {
         service_name: 'Oven Cleaning',
         details: 'Double oven, M20 4BX',
-        contact: { name: 'Grace', phone: '07700900000' },
+        contact: { name: 'Grace', phone: '07700900000' }, research: R,
       },
     });
     taskId = res.json().task_id;
@@ -416,7 +421,7 @@ describe('Deposit capture (no-show)', () => {
       payload: {
         service_name: 'Oven Cleaning',
         details: 'Test',
-        contact: { name: 'Heidi' },
+        contact: { name: 'Heidi' }, research: R,
       },
     });
     taskId = res.json().task_id;
@@ -457,7 +462,7 @@ describe('Deposit auth checks', () => {
       payload: {
         service_name: 'Oven Cleaning',
         details: 'Test',
-        contact: { name: 'Ivan' },
+        contact: { name: 'Ivan' }, research: R,
       },
     });
     taskId = res.json().task_id;
@@ -496,7 +501,7 @@ describe('Cancel pending_deposit task', () => {
       payload: {
         service_name: 'Oven Cleaning',
         details: 'Test cancel',
-        contact: { name: 'Zara' },
+        contact: { name: 'Zara' }, research: R,
       },
     });
     expect(res.statusCode).toBe(201);

@@ -60,7 +60,7 @@ export function registerRoutes(
         service_area: s.service_area ?? null,
       })),
       presence_urls: config.presenceUrls,
-      research_required: config.researchRequired,
+      research_required: true,
     };
   });
 
@@ -77,8 +77,8 @@ export function registerRoutes(
 
     const body = parsed.data;
 
-    // Enforce research requirement
-    if (config.researchRequired && !body.research) {
+    // Enforce research requirement (always on — protocol-level safety)
+    if (!body.research) {
       reply.status(400);
       return errorResponse(
         'Research is required before submitting a task. Include a "research" object with "urls_checked" (array of URLs) and "summary" (what you found).',

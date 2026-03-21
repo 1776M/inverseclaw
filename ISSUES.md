@@ -88,7 +88,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** The docs say provider research before booking is "mandatory" and "enforced at the MCP level." But any HTTP client can call `POST /tasks` directly. Third-party MCP implementations can skip research. There is no protocol-level enforcement. Calling it "mandatory" is inaccurate and undermines the legal defense.
 - **Fix:** Change documentation language from "mandatory/enforced" to "required by protocol convention." Consider adding an optional `research_token` field to `POST /tasks` that the server can check (issued by the MCP after research is completed).
 - **Effort:** Small (docs) to Medium (research token)
-- **Status:** Open
+- **Status:** Fixed — server-enforced. POST /tasks requires a `research` object (urls_checked + summary) when researchRequired is true (default). Manifest includes research_required flag.
 
 ### #12 SQLite will not survive real load
 - **File:** `packages/server/prisma/schema.prisma`
@@ -180,4 +180,5 @@ Identified 2026-03-21. Work through these before any public launch.
 | #7 Rate limiting | 2026-03-21 | 0ef3202 | @fastify/rate-limit: 100 req/min global, 10 req/min on POST /tasks per IP. |
 | #8 GDPR compliance | 2026-03-21 | 5c362a7 | DELETE /tasks/:id endpoint + Data Protection section in README. Business is data controller. |
 | #9 No notifications | 2026-03-21 | 5d18d0e | Webhook system: WEBHOOK_URL env var, fire-and-forget POST on task.created/task.updated/deposit.confirmed. |
-| #10 Race conditions | 2026-03-21 | (see commit) | Optimistic locking via updateMany WHERE status = expected. Returns 409 CONCURRENT_MODIFICATION on conflict. |
+| #10 Race conditions | 2026-03-21 | fd51a9c | Optimistic locking via updateMany WHERE status = expected. Returns 409 CONCURRENT_MODIFICATION on conflict. |
+| #11 Research unenforceable | 2026-03-21 | (see commit) | Server-enforced: POST /tasks requires research object. Manifest includes research_required flag. 7 new tests. |

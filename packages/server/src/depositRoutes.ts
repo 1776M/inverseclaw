@@ -82,6 +82,7 @@ export function registerDepositRoutes(
           : null,
       })),
       presence_urls: config.presenceUrls,
+      research_required: config.researchRequired,
     };
   });
 
@@ -97,6 +98,15 @@ export function registerDepositRoutes(
     }
 
     const body = parsed.data;
+
+    // Enforce research requirement
+    if (config.researchRequired && !body.research) {
+      reply.status(400);
+      return errorResponse(
+        'Research is required before submitting a task. Include a "research" object with "urls_checked" (array of URLs) and "summary" (what you found).',
+        'RESEARCH_REQUIRED'
+      );
+    }
 
     const matchedService = services.find(
       (s) => s.name.toLowerCase() === body.service_name.toLowerCase()

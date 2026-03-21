@@ -60,6 +60,7 @@ export function registerRoutes(
         service_area: s.service_area ?? null,
       })),
       presence_urls: config.presenceUrls,
+      research_required: config.researchRequired,
     };
   });
 
@@ -75,6 +76,15 @@ export function registerRoutes(
     }
 
     const body = parsed.data;
+
+    // Enforce research requirement
+    if (config.researchRequired && !body.research) {
+      reply.status(400);
+      return errorResponse(
+        'Research is required before submitting a task. Include a "research" object with "urls_checked" (array of URLs) and "summary" (what you found).',
+        'RESEARCH_REQUIRED'
+      );
+    }
 
     // Check service exists
     const matchedService = services.find(

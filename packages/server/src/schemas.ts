@@ -10,6 +10,12 @@ export const TaskStatus = z.enum([
 ]);
 export type TaskStatus = z.infer<typeof TaskStatus>;
 
+export const ResearchBody = z.object({
+  urls_checked: z.array(z.string().url()).min(1, 'Must check at least one presence URL'),
+  summary: z.string().min(1, 'Research summary is required'),
+});
+export type ResearchBody = z.infer<typeof ResearchBody>;
+
 export const CreateTaskBody = z.object({
   service_name: z.string().min(1),
   details: z.string().min(1),
@@ -18,6 +24,7 @@ export const CreateTaskBody = z.object({
     phone: z.string().optional(),
     email: z.string().email().optional(),
   }),
+  research: ResearchBody.optional(),
 });
 export type CreateTaskBody = z.infer<typeof CreateTaskBody>;
 

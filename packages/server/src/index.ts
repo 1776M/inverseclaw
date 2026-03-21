@@ -21,7 +21,7 @@ async function main(): Promise<void> {
   console.log(`Loaded ${services.length} service(s) from services.yaml`);
   for (const s of services) {
     const depositInfo = s.deposit
-      ? ` (deposit: £${(s.deposit.amount_pence / 100).toFixed(2)} via ${s.deposit.providers.join(', ')})`
+      ? ` (deposit: $${(s.deposit.amount_cents / 100).toFixed(2)} via ${s.deposit.providers.join(', ')})`
       : '';
     console.log(`  - ${s.name}${depositInfo}`);
   }

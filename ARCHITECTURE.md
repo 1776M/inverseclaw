@@ -106,7 +106,7 @@ inverse-claw-server. It returns:
       "name": "Oven Cleaning",
       "description": "Professional domestic oven cleaning including racks, glass, and hob. Single ovens from £45, doubles from £65. Greater Manchester area.",
       "service_area": { "country": "GB", "regions": ["M", "SK", "OL", "WA"] },
-      "deposit": { "amount_pence": 1500, "providers": ["stripe", "usdc_base"] }
+      "deposit": { "amount_cents": 1500, "providers": ["stripe", "usdc_base"] }
     }
   ],
   "presence_urls": [
@@ -262,7 +262,7 @@ services:
       country: GB
       regions: [M, SK, OL, WA]
     deposit:
-      amount_pence: 1500
+      amount_cents: 1500
       providers: [stripe, usdc_base]    # business chooses which to accept
 ```
 

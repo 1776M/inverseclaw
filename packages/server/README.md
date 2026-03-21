@@ -174,7 +174,7 @@ The node ID and API key persist across restarts in `data/node.json`. If you lose
 | `STRIPE_SECRET_KEY` | Conditional | — | Your Stripe secret key. **Required only if any service lists `stripe` in its deposit providers.** |
 | `USDC_WALLET_ADDRESS` | Conditional | — | Your wallet address on Base L2. **Required only if any service lists `usdc_base` in its deposit providers.** |
 | `BASE_RPC_URL` | No | `https://mainnet.base.org` | Base L2 RPC endpoint for USDC transaction verification |
-| `GBP_USD_RATE` | No | `1.27` | GBP to USD conversion rate for USDC deposit amounts |
+| `CORS_ORIGIN` | No | `*` (all origins) | Allowed CORS origin. Set to your domain in production (e.g. `https://yourdomain.com`). |
 | `PUBLIC_URL` | No | `http://localhost:3000` | Your server's public URL (e.g. `https://yourdomain.com`). Used in the `/.well-known/inverseclaw` manifest. **Set this in production.** |
 | `WEBHOOK_URL` | No | — | URL to receive POST notifications when tasks are created, updated, or deposits confirmed. Works with Slack, Zapier, Make, or any HTTP endpoint. |
 | `BUSINESS_PRIVATE_KEY` | Conditional | — | Private key for your USDC wallet. **Required for USDC escrow mode** (signing capture/release transactions). Not needed for Stripe or direct transfer mode. |
@@ -202,7 +202,7 @@ services:
       country: GB
       regions: [M, SK, OL, WA]
     deposit:
-      amount_pence: 1500
+      amount_cents: 1500
       providers: [stripe, usdc_base]
 
   - name: Kitchen Deep Clean
@@ -227,7 +227,7 @@ services:
 | `service_area.cities` | No | Array of city names |
 | `service_area.radius_km` | No | Service radius in kilometres |
 | `deposit` | No | Deposit configuration object. Omit entirely for no deposit. |
-| `deposit.amount_pence` | Yes (if deposit) | Amount in pence. You decide this per service. |
+| `deposit.amount_cents` | Yes (if deposit) | Deposit amount in USD cents (e.g. 1500 = $15.00). You decide this per service. |
 | `deposit.providers` | Yes (if deposit) | Array of accepted deposit providers: `stripe`, `usdc_base`, or both. Agents pick one the user can use. |
 
 #### Tips for good service descriptions
@@ -286,13 +286,13 @@ services:
   - name: Oven Cleaning
     description: Professional domestic oven cleaning...
     deposit:
-      amount_pence: 1500              # £15.00
+      amount_cents: 1500              # $15.00
       providers: [stripe, usdc_base]  # accept both
 
   - name: Emergency Plumbing
     description: Emergency callout for leaks...
     deposit:
-      amount_pence: 3000              # £30.00
+      amount_cents: 3000              # $30.00
       providers: [stripe]             # card only
 
   - name: Garden Maintenance
@@ -478,7 +478,7 @@ Then reference it in `services.yaml`:
 
 ```yaml
 deposit:
-  amount_pence: 1500
+  amount_cents: 1500
   providers: [stripe, usdc_arbitrum_one]
 ```
 
@@ -496,7 +496,7 @@ registerProvider(new EvmUsdcProvider({
 
 ```yaml
 deposit:
-  amount_pence: 1500
+  amount_cents: 1500
   providers: [usdc_avalanche]
 ```
 
@@ -526,7 +526,7 @@ The discovery endpoint. Any AI agent that knows your domain can hit this URL to 
       "name": "Oven Cleaning",
       "description": "Professional domestic oven cleaning...",
       "service_area": { "country": "GB", "regions": ["M", "SK", "OL", "WA"] },
-      "deposit": { "amount_pence": 1500, "providers": ["stripe", "usdc_base"] }
+      "deposit": { "amount_cents": 1500, "providers": ["stripe", "usdc_base"] }
     },
     {
       "name": "Kitchen Deep Clean",
@@ -554,7 +554,7 @@ Returns your services array. Same data as the manifest but without node metadata
     "name": "Oven Cleaning",
     "description": "Professional domestic oven cleaning...",
     "service_area": { "country": "GB", "regions": ["M", "SK", "OL", "WA"] },
-    "deposit": { "amount_pence": 1500, "providers": ["stripe", "usdc_base"] }
+    "deposit": { "amount_cents": 1500, "providers": ["stripe", "usdc_base"] }
   },
   {
     "name": "Kitchen Deep Clean",
@@ -592,6 +592,8 @@ Agent submits a service request on behalf of a customer. The business then conta
 | `contact.name` | **Yes** | Customer's name |
 | `contact.phone` | No | Customer's phone number |
 | `contact.email` | No | Customer's email (must be valid format if provided) |
+| `research.urls_checked` | **Yes** | Array of presence URLs the agent checked (min 1, max 20) |
+| `research.summary` | **Yes** | What the agent found when researching the business (max 5000 chars) |
 
 **Example request:**
 
@@ -603,6 +605,13 @@ Agent submits a service request on behalf of a customer. The business then conta
     "name": "Jane Smith",
     "phone": "07700900123",
     "email": "jane@email.com"
+  },
+  "research": {
+    "urls_checked": [
+      "https://checkatrade.com/trades/cleanright",
+      "https://facebook.com/cleanrightltd"
+    ],
+    "summary": "4.8 stars on Checkatrade with 90+ reviews. Active Facebook page since 2019. Appears legitimate."
   }
 }
 ```
@@ -624,7 +633,7 @@ Agent submits a service request on behalf of a customer. The business then conta
   "task_id": "tsk_za3e7j6u97am",
   "transaction_id": "ic_a3f9b2_20260320T143022_k7x9m",
   "status": "pending_deposit",
-  "deposit_amount_pence": 1500,
+  "deposit_amount_cents": 1500,
   "deposit_providers": {
     "stripe": {
       "client_secret": "pi_3abc123_secret_xyz"
@@ -647,6 +656,7 @@ The response includes all accepted deposit providers. The agent picks one the cu
 | Status | Code | When |
 |--------|------|------|
 | 400 | `VALIDATION_ERROR` | Missing or invalid fields |
+| 400 | `RESEARCH_REQUIRED` | Missing `research` object — agent must research the business before submitting |
 | 404 | `SERVICE_NOT_FOUND` | Service name doesn't match any in services.yaml |
 
 ### GET /tasks/:task_id
@@ -668,7 +678,7 @@ Returns full task details including contact information, current status, deposit
   },
   "status": "accepted",
   "deposit_required": true,
-  "deposit_amount_pence": 1500,
+  "deposit_amount_cents": 1500,
   "deposit_provider": "stripe",
   "deposit_status": "held",
   "created_at": "2026-03-20T14:30:22.000Z",
@@ -681,7 +691,7 @@ Returns full task details including contact information, current status, deposit
 }
 ```
 
-For tasks without deposits, `deposit_required` will be `false` and `deposit_amount_pence` and `deposit_status` will be `null`.
+For tasks without deposits, `deposit_required` will be `false` and `deposit_amount_cents` and `deposit_status` will be `null`.
 
 **Error responses:**
 
@@ -1011,8 +1021,9 @@ npm run test:watch   # Run tests in watch mode (re-runs on file changes)
 | `deposit.test.ts` | 26 | Deposit holds: lifecycle, capture, release, auth, edge cases |
 | `deposit-schemas.test.ts` | 13 | Deposit state machine, ConfirmDepositBody validation |
 | `deposit-services.test.ts` | 9 | Extended service schema with deposit fields |
+| `research.test.ts` | 5 | Research requirement enforcement |
 
-**Total: 116 tests**
+**Total: 121 tests**
 
 Deposit tests use a mocked Stripe client — no real Stripe API calls are made during testing.
 
@@ -1145,7 +1156,7 @@ WEBHOOK_URL=https://yourdashboard.com/api/inverseclaw-webhook
     "task_id": "tsk_za3e7j6u97am",
     "status": "pending",
     "provider": "stripe",
-    "deposit_amount_pence": 1500
+    "deposit_amount_cents": 1500
   }
 }
 ```
@@ -1197,13 +1208,13 @@ Stripe automatically releases uncaptured holds after 7 days.
 The USDC is already in your wallet. "Releasing" a USDC deposit means you manually send it back. If you don't, you keep it.
 
 **Can I set different deposit amounts for different services?**
-Yes. Each service has its own `amount_pence`. Set it per service in `services.yaml`.
+Yes. Each service has its own `amount_cents` (USD cents). Set it per service in `services.yaml`.
 
 **Does the deposit replace payment for the service?**
 No. The deposit is a small amount to prove the customer has skin in the game. Actual payment happens directly between you and the customer.
 
 **What currency are deposits in?**
-Stripe deposits are in GBP. USDC deposits are converted from GBP at a configurable rate (default 1.27 GBP/USD, override with `GBP_USD_RATE` env var).
+All deposits are in USD. The `amount_cents` field in `services.yaml` is in USD cents (e.g. 1500 = $15.00). Both Stripe and USDC use the same amount.
 
 **Do I need to set up webhooks?**
 No. If `WEBHOOK_URL` is not set, no webhooks are sent and no errors occur. But without webhooks (or a dashboard), you won't know when tasks arrive — so it's strongly recommended.

@@ -18,7 +18,7 @@ Identified 2026-03-21. Work through these before any public launch.
 - **Problem:** (a) The same transaction hash can be reused to "confirm" unlimited tasks — no deduplication. (b) The amount check is `value > 0n` — a 0.000001 USDC transfer satisfies a £15 deposit. (c) Old transactions to the same wallet work — no recency check.
 - **Fix:** (a) Store used tx hashes in the database and reject duplicates. (b) Check `value >= expectedAmount`. (c) Optionally check block timestamp is within a reasonable window.
 - **Effort:** Medium
-- **Status:** Open
+- **Status:** Fixed
 
 ### #3 USDC "release" is a no-op — not a real deposit hold
 - **File:** `packages/server/src/providers/usdc.ts`
@@ -171,4 +171,5 @@ Identified 2026-03-21. Work through these before any public launch.
 
 | Issue | Date Fixed | Commit | Notes |
 |-------|-----------|--------|-------|
-| #1 Stripe confirmDeposit | 2026-03-21 | (see commit) | Now calls stripe.paymentIntents.retrieve() and checks status === 'requires_capture' |
+| #1 Stripe confirmDeposit | 2026-03-21 | da78c6c | Now calls stripe.paymentIntents.retrieve() and checks status === 'requires_capture' |
+| #2 USDC tx replay + amount | 2026-03-21 | (see commit) | Added tx hash dedup (in-memory Set), amount check (>= 90% of expected), expected amount tracking per deposit |

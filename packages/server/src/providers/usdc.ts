@@ -71,6 +71,11 @@ export class EvmUsdcProvider implements DepositProvider {
   private chainId: number;
   private chain: Chain;
 
+  /** Track expected USDC amounts per deposit reference */
+  private expectedAmounts = new Map<string, bigint>();
+  /** Track used tx hashes to prevent replay attacks */
+  private usedTxHashes = new Set<string>();
+
   constructor(config: EvmUsdcConfig) {
     this.chainId = config.chainId;
     this.walletAddress = config.walletAddress as Address;
@@ -109,6 +114,12 @@ export class EvmUsdcProvider implements DepositProvider {
     const depositReference = `dep_${randomBytes(12).toString('hex')}`;
     const amountUsdc = this.penceToUsdc(params.amountPence);
 
+    // Store expected amount for verification during confirmation
+    // Use 90% of expected as minimum to allow for exchange rate fluctuation
+    const expectedRaw = Math.round(parseFloat(amountUsdc) * 10 ** USDC_DECIMALS);
+    const minimumAmount = BigInt(Math.floor(expectedRaw * 0.9));
+    this.expectedAmounts.set(depositReference, minimumAmount);
+
     return {
       depositId: depositReference,
       providerType: this.type,
@@ -123,11 +134,18 @@ export class EvmUsdcProvider implements DepositProvider {
   }
 
   async confirmDeposit(
-    _depositId: string,
+    depositId: string,
     confirmation: Record<string, string>
   ): Promise<boolean> {
     const txHash = confirmation.tx_hash;
     if (!txHash) return false;
+
+    // Prevent tx_hash replay — same hash cannot confirm multiple deposits
+    const normalizedHash = txHash.toLowerCase();
+    if (this.usedTxHashes.has(normalizedHash)) return false;
+
+    // Look up expected minimum amount
+    const minimumAmount = this.expectedAmounts.get(depositId) ?? 0n;
 
     const client = createPublicClient({
       chain: this.chain,
@@ -141,7 +159,7 @@ export class EvmUsdcProvider implements DepositProvider {
 
       if (receipt.status !== 'success') return false;
 
-      // Check for USDC Transfer event to our wallet
+      // Check for USDC Transfer event to our wallet with sufficient amount
       for (const log of receipt.logs) {
         if (log.address.toLowerCase() !== this.usdcAddress.toLowerCase()) continue;
 
@@ -151,7 +169,12 @@ export class EvmUsdcProvider implements DepositProvider {
         if (toAddress !== this.walletAddress.toLowerCase()) continue;
 
         const value = BigInt(log.data);
-        if (value > 0n) return true;
+        if (value >= minimumAmount && value > 0n) {
+          // Mark tx hash as used and clean up expected amount
+          this.usedTxHashes.add(normalizedHash);
+          this.expectedAmounts.delete(depositId);
+          return true;
+        }
       }
 
       return false;

@@ -20,7 +20,7 @@ import { mkdirSync, existsSync, rmSync } from 'node:fs';
 
 // --- Test fixtures ---
 
-const TEST_DB_DIR = join(process.cwd(), 'data-test');
+const TEST_DB_DIR = join(process.cwd(), 'data-test-walkthrough');
 const TEST_DB_PATH = join(TEST_DB_DIR, 'walkthrough.db');
 const TEST_DB_URL = `file:${TEST_DB_PATH}`;
 

@@ -55,6 +55,10 @@
                          (plumber arrives, oven cleaned, etc.)
 ```
 
+When a service requires a deposit hold, the MCP also interacts with
+Stripe to confirm a pre-auth hold on the user's card before the task
+moves from `pending_deposit` to `pending`.
+
 ---
 
 ## Two Discovery Paths
@@ -102,7 +106,9 @@ inverse-claw-server. It returns:
     {
       "name": "Oven Cleaning",
       "description": "Professional domestic oven cleaning including racks, glass, and hob. Single ovens from £45, doubles from £65. Greater Manchester area.",
-      "service_area": { "country": "GB", "regions": ["M", "SK", "OL", "WA"] }
+      "service_area": { "country": "GB", "regions": ["M", "SK", "OL", "WA"] },
+      "deposit_required": true,
+      "deposit_amount_pence": 1500
     }
   ],
   "presence_urls": [
@@ -128,9 +134,13 @@ Responsibilities:
 - Allow business to push task status updates
 - Generate unique transaction IDs
 - Register with / update the index automatically
+- Optionally manage Stripe deposit hold lifecycle (create hold, confirm, release, capture)
 
 Does NOT:
 - Handle payments (payment is offline between business and customer)
+  Note: the optional Stripe deposit hold is not payment for the service —
+  it is a pre-auth hold for anti-troll and proof of agreement that releases
+  on normal completion.
 - Communicate with other nodes
 - Handle disputes
 - Store user personal data beyond what's in the task payload
@@ -171,6 +181,9 @@ Responsibilities:
 - Call the index search API
 - Call provider nodes directly for task operations
 - Surface trust signals to agents before task submission
+- Enforce mandatory provider research before task submission (protocol requirement)
+- Handle Stripe deposit confirmation on user's behalf when required by provider
+- Gate task submission on completed research step with user confirmation
 - Store nothing — stateless pass-through
 
 ---
@@ -226,6 +239,134 @@ Responsibilities:
     quoting transaction_id ic_a3f9b2_20260320T143022_k7x9m.
     Inverse Claw is not involved.
 ```
+
+---
+
+## Optional Stripe Deposit Hold (Anti-Troll + Proof of Agreement)
+
+Businesses can optionally require a small Stripe pre-auth hold before a
+task is accepted. This deters trolls and provides traceable proof of
+agreement via Stripe's KYC — the card links to a real person.
+
+### Configuration
+
+Services declare deposit requirements in `services.yaml`:
+
+```yaml
+services:
+  - name: Oven Cleaning
+    description: Professional domestic oven cleaning...
+    service_area:
+      country: GB
+      regions: [M, SK, OL, WA]
+    deposit_required: true        # optional, default false
+    deposit_amount_pence: 1500    # required if deposit_required is true
+```
+
+The server requires `STRIPE_SECRET_KEY` in environment only if any service
+has `deposit_required: true`. If no service requires a deposit, Stripe is
+not needed and the server works exactly as before.
+
+### Deposit Hold Lifecycle
+
+```
+1. Agent submits task
+   POST /tasks → returns task_id, transaction_id, status: "pending_deposit",
+                  stripe_client_secret (Stripe PaymentIntent client secret)
+
+2. Agent/MCP confirms the card hold on user's side
+   (uses stripe_client_secret with Stripe.js or the Stripe SDK)
+
+3. Agent confirms deposit with server
+   POST /tasks/:task_id/deposit { payment_intent_id: "pi_..." }
+   → task transitions from "pending_deposit" to "pending"
+
+4. Business sees the task with deposit confirmed, proceeds as normal
+   (accept → in_progress → completed)
+
+5a. Normal completion or business cancels:
+    Hold releases automatically (or business calls release endpoint)
+    POST /tasks/:task_id/deposit/release
+
+5b. Customer no-show:
+    Business captures the hold amount
+    POST /tasks/:task_id/deposit/capture
+```
+
+### Task State Machine (with deposit)
+
+When a service has `deposit_required: true`, the task starts in
+`pending_deposit` instead of `pending`:
+
+```
+pending_deposit → [pending]           (deposit confirmed by agent)
+pending         → [accepted, declined, cancelled]
+accepted        → [in_progress, cancelled]
+in_progress     → [completed, cancelled]
+declined        → (terminal)
+cancelled       → (terminal)
+completed       → (terminal)
+```
+
+Services without `deposit_required` skip `pending_deposit` and start
+directly in `pending`, exactly as before. Existing behaviour is unchanged.
+
+### New API Endpoints (deposit)
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| POST | `/tasks/:task_id/deposit` | None | Agent confirms deposit hold (sends `payment_intent_id`) |
+| POST | `/tasks/:task_id/deposit/capture` | Business API key | Business captures hold on no-show |
+| POST | `/tasks/:task_id/deposit/release` | Business API key | Business releases hold early |
+
+### Why Not Crypto Signatures?
+
+The Stripe hold replaces the need for cryptographic signatures. Signatures
+only prove "the same key signed both messages" — not who owns the key.
+OpenClaw instances are self-hosted and anonymous. A Stripe payment intent
+links to a real cardholder via banking KYC. See THINKING.md for the full
+rationale.
+
+---
+
+## Mandatory Provider Research Before Booking
+
+The protocol REQUIRES that AI agents research a provider before submitting
+a task. This is enforced at the MCP level — the server cannot know what the
+agent showed the user.
+
+### MCP Tool Gating
+
+The MCP exposes (at minimum) these tools:
+
+```
+research_provider(node_id | domain)
+  → Returns: business name, presence URLs, web reputation signals,
+    domain age, review summary, trust assessment
+
+submit_task(node_id, service_name, details, contact)
+  → REFUSES to execute unless research_provider has been called
+    for the same node_id in the current session
+```
+
+The `submit_task` tool checks internally that `research_provider` was
+called for the target `node_id`. If not, it returns an error instructing
+the agent to research first.
+
+### Research Step
+
+1. Fetch `/.well-known/inverseclaw` manifest from the provider
+2. Check each `presence_url` (Checkatrade, Facebook, Google Business, etc.)
+3. Assess web reputation signals (domain age, review count, sentiment)
+4. Present findings to the user with a clear summary
+5. Wait for explicit user confirmation before proceeding
+
+### Why Mandatory?
+
+- Protects users from scam providers
+- Provides legal cover (information was surfaced, user made informed decision)
+- Differentiates Inverse Claw from blind booking systems
+- Non-compliant MCP implementations that skip research violate the protocol
 
 ---
 
@@ -302,6 +443,26 @@ Red flags to surface to user:
 **Task spam to nodes:**
 - Nodes can implement their own rate limiting
 - Task_id as a secret for status access limits exposure
+- Optional Stripe deposit hold deters casual trolling (real card required)
+
+### Deposit hold as identity proof
+
+The Stripe payment intent ID links to a real cardholder via Stripe's KYC.
+In a dispute, the business can trace the booking to a real person through
+Stripe's records. This eliminates the need for cryptographic signatures in
+the protocol — banking identity is stronger than anonymous key pairs.
+
+Businesses choose which services require this additional trust layer. Services
+without a deposit requirement remain open to any agent (subject to the
+business's own rate limiting).
+
+### Mandatory research as scam protection
+
+The protocol requires agents to research providers before booking (enforced
+at the MCP level). This means users always see trust signals before
+committing. Combined with the deposit hold, both sides are protected:
+businesses from trolls (via deposit), users from scams (via mandatory
+research).
 
 ---
 

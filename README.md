@@ -31,6 +31,10 @@ Businesses self-host an `inverse-claw-server` which serves a manifest at
 directly from the domain, or search the index for providers by keyword and
 location.
 
+For services that require it, the protocol also handles a small deposit hold
+to deter no-shows and prove agreement — the hold releases automatically on
+normal completion.
+
 ---
 
 ## Components
@@ -63,6 +67,8 @@ schemas required. Agents search over your descriptions to find you.
 
 - **Free-text service descriptions** — no rigid schemas, agents search semantically
 - **No payment in the protocol** — payment is arranged directly between business and customer
+- **Optional deposit holds for trust** — businesses can require a small card hold as proof of agreement and no-show deterrent
+- **Mandatory provider research** — agents must research and surface provider reputation before booking
 - **Domain presence as trust signal** — the open web verifies providers, not us
 - **`/.well-known/inverseclaw` discovery** — agents can find services directly from a domain
 - **MIT licence** on server and MCP — businesses can adopt without restriction

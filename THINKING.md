@@ -125,6 +125,25 @@ lifecycle. Rejected because:
 - Payment can be layered on later (escrow, invoicing) once the core works
 - The protocol's job is discovery and agreement, not money movement
 
+Note: we later added an optional Stripe *deposit hold* (see below). This is
+not payment — it's a pre-auth hold for anti-troll and proof of agreement.
+The distinction matters: full payment in the protocol was rejected. A small
+hold that releases on normal completion was accepted.
+
+### Rejected: Cryptographic Signatures for Proof of Agreement
+
+Early design considered Ed25519 key pairs where the user's agent signs the
+task submission and the business verifies the signature. This would give both
+parties a cryptographic receipt of the agreement. Rejected because:
+
+- Signatures prove "the same key signed both messages" — not WHO owns the key
+- OpenClaw instances are self-hosted and anonymous — there is no central PKI
+  or authority to map a public key to a real person
+- A troll can say "that's not my signature" and there's no way to trace it
+- Key management adds complexity for both agent and server implementations
+- Stripe payment holds achieve identity verification via banking KYC without
+  any crypto infrastructure — the card IS the person
+
 ---
 
 ## The Key Insight: Protocol + Index
@@ -232,6 +251,89 @@ invoicing), but only after the core discovery and agreement loop is proven.
 
 ---
 
+## Proof of Agreement: Why Stripe Holds, Not Crypto Signatures
+
+The problem: when an AI agent submits a task on behalf of a user, the business
+needs two things:
+
+1. **Deterrence** — trolls who book services with no intention of paying cost
+   real money (blocked time slots, dispatched technicians, lost revenue)
+2. **Identity** — if there's a dispute, there must be a way to trace the
+   request back to a real person
+
+We initially considered cryptographic signatures (Ed25519 key pairs) where
+both parties sign the agreement. But this only proves "the same entity signed
+both messages" — it does not prove who that entity is. An OpenClaw instance
+is self-hosted and anonymous. There is no central authority to verify who
+owns a given public key. A troll can simply say "that's not my key."
+
+The elegant solution: **Stripe deposit holds serve double duty.**
+
+A small pre-auth hold (e.g. £10-20, configured per service) on the user's
+card achieves both goals simultaneously:
+
+- **Anti-troll:** casual trolls won't put a real card on hold for a fake booking
+- **Proof of identity:** the Stripe payment intent ID links to a real cardholder
+  via Stripe's KYC. If there's a dispute, the business has a traceable identity
+  — not just an anonymous public key
+
+The hold is NOT payment for the service:
+- It releases automatically on normal completion or business cancellation
+- It gets captured by the business only on customer no-show
+- Actual payment for the job remains offline (cash, card, bank transfer)
+
+This is optional and business-configurable. A business declares in their
+`services.yaml` whether a service requires a deposit hold and how much.
+Services without a deposit requirement work exactly as before.
+
+The result: simpler protocol (no key management, no signature verification),
+stronger identity guarantees (banking KYC vs anonymous crypto keys), and
+an actual deterrent against trolling.
+
+---
+
+## Mandatory Provider Research Before Booking
+
+The protocol REQUIRES that AI agents research a provider before submitting
+a task. This is not optional — it is a protocol-level requirement enforced
+at the MCP layer.
+
+**Why this matters:**
+
+Without mandatory research, an agent could blindly submit tasks to any
+provider that appears in search results. This exposes users to scams and
+exposes us to liability ("your system booked a scammer for me").
+
+By requiring research before booking:
+- Users see trust signals before committing (presence URLs, web reputation,
+  domain age, review signals)
+- Users give explicit "proceed?" confirmation after seeing the research
+- We have legal cover — information was surfaced, the user made an informed
+  decision
+- It differentiates Inverse Claw from blind booking systems
+
+**How it works:**
+
+The MCP exposes two tools: `research_provider` and `submit_task`. The
+`submit_task` tool refuses to execute unless `research_provider` has been
+called first for the same provider (same `node_id`). This is enforced in
+the MCP tool implementation — the server cannot know what the agent showed
+the user.
+
+The research step:
+1. Fetch the provider's `/.well-known/inverseclaw` manifest
+2. Check each presence URL (Checkatrade, Facebook, Google Business, etc.)
+3. Assess web reputation signals (domain age, review count, sentiment)
+4. Present findings to the user with a clear summary
+5. Wait for explicit user confirmation before proceeding
+
+This cannot be enforced at the server level because the server has no
+visibility into the agent-user interaction. It is a protocol convention
+that MCP implementations must follow. Any MCP implementation that skips
+the research step is non-compliant with the Inverse Claw protocol.
+
+---
+
 ## The Legal Structure
 
 Three key legal points shaped the design:
@@ -323,12 +425,15 @@ UCP is how agents buy things. Inverse Claw is how agents hire people.
 
 ## Current Status
 
-Design complete. Ready to build.
+Phase 1 (server) built and tested. Protocol v1.1 design additions:
+optional Stripe deposit holds, mandatory provider research before booking.
 
 Build order:
-1. inverse-claw-server (open source, TypeScript + Fastify + SQLite + Docker)
-2. inverse-claw-index (proprietary, TypeScript + Fastify + Supabase + Railway)
-3. inverse-claw-mcp (open source, MCP SDK + npm + ClawHub)
+1. inverse-claw-server (open source, TypeScript + Fastify + SQLite + Docker) — ✅ built
+2. inverse-claw-server deposit hold support — designed, not yet implemented
+3. inverse-claw-index (proprietary, TypeScript + Fastify + Supabase + Railway)
+4. inverse-claw-mcp (open source, MCP SDK + npm + ClawHub) — must enforce
+   mandatory research before booking
 
 See CLAUDE.md for full build instructions.
 See ARCHITECTURE.md for system design.

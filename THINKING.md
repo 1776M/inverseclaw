@@ -53,12 +53,11 @@ component. Rejected because:
 - Discovery problem — how does an agent find providers?
 - Cold start problem — no supply, no demand, no way to bootstrap
 - Trust problem — no signals for agents to evaluate providers
-- The index is precisely what has value
 
-Note: The `/.well-known/inverseclaw` discovery mechanism partially addresses
-the pure P2P case — an agent that already knows a business's domain can discover
-services directly. But the index is still needed for search ("find me a plumber
-in Manchester") where the agent doesn't know which domains to check.
+Note: The `/.well-known/inverseclaw` discovery mechanism addresses the
+direct case — an agent that knows a business's domain can discover services
+directly. A discovery layer on top could solve the "find me a plumber in
+Manchester" case where the agent doesn't know which domains to check.
 
 ### Rejected: Peer-to-peer with individual task doers
 
@@ -112,7 +111,7 @@ parties a cryptographic receipt of the agreement. Rejected because:
 
 ---
 
-## The Key Insight: Protocol + Index
+## The Key Insight: Open Protocol, Separate Discovery
 
 The clean structure emerged from separating two things that had been conflated:
 
@@ -121,32 +120,21 @@ The clean structure emerged from separating two things that had been conflated:
 - How to request it (task submission with contact details)
 - How to track it (status updates from business)
 
-**The index** (proprietary, we host) handles:
-- Discovery — which businesses offer what, where
-- Trust signals — is this business real?
-- The core asset
-
-This mirrors how the web works. HTTP is the open protocol. Google is the
-proprietary index. Nobody owns HTTP. Google is worth $2 trillion.
-
-This mirrors how the web works — open protocol, proprietary discovery layer.
+**Discovery** (how agents find businesses) is a separate concern:
+- The protocol defines `/.well-known/inverseclaw` for direct domain discovery
+- Third-party discovery services can be built on top of the protocol
+- The protocol does not depend on any specific discovery service
 
 ---
 
 ## Two Discovery Paths
 
-Inverse Claw supports two discovery mechanisms:
+The protocol defines a standard discovery endpoint:
 
-**1. Central index (primary)**
-Agent searches the index: "find me an oven cleaner in Manchester."
-Index returns matching nodes with service descriptions, presence URLs,
-and reputation signals. This is how most discovery will happen.
-
-**2. Direct domain discovery (secondary)**
-If an agent already knows a business's domain (e.g. from a Google search,
-a recommendation, or a previous interaction), it can hit
+An agent that knows a business's domain (from a web search, a
+recommendation, or a previous interaction) can hit
 `cleanright.co.uk/.well-known/inverseclaw` and get the service manifest
-directly. No index needed.
+directly.
 
 The `/.well-known/inverseclaw` endpoint is served automatically by
 inverse-claw-server. It returns the same data as `/services` but at a
@@ -320,33 +308,6 @@ The server and MCP are MIT licensed. This means businesses can self-host,
 modify, and use commercially without restriction. If we had used GPL, enterprise
 adoption would be blocked (GPL requires derivative works to be open sourced too).
 
-The index is proprietary. This is intentional — it's the asset.
-
----
-
-## The Onboarding Angle
-
-The open source server creates a natural onboarding business:
-
-- Businesses want to be callable by AI agents
-- They might need help describing their services effectively
-- They might need help deploying the Docker container
-- They might want someone to handle registration with the index
-
-We sell that as a low-fee onboarding (£200-500 per business). The server
-is simple enough that most tech-savvy businesses can do it themselves —
-edit a YAML file, run `docker-compose up`, done.
-
-For less technical businesses, onboarding can be subcontracted.
-
-This:
-- Generates immediate cash
-- Grows the index organically (every client = one more indexed node)
-- Builds our understanding of which service types are most demanded
-
-The index only becomes valuable when it has real providers. Onboarding is
-how we seed it without a marketplace chicken-and-egg problem.
-
 ---
 
 ## What We Explicitly Chose Not to Own
@@ -374,15 +335,14 @@ Inverse Claw is how AI agents hire people for real-world tasks.
 
 ## Current Status
 
-Phase 1 (server) built and tested. Protocol v1.1 design additions:
-optional Stripe deposit holds, mandatory provider research before booking.
+Protocol v1.1 complete. Reference server implementation built and tested
+(134 tests). Deposit hold support implemented (Stripe, USDC, USDT).
+Mandatory research enforced at server level.
 
 Build order:
-1. inverse-claw-server (open source, TypeScript + Fastify + SQLite + Docker) — ✅ built
-2. inverse-claw-server deposit hold support — designed, not yet implemented
-3. inverse-claw-index (proprietary, TypeScript + Fastify + Supabase + Railway)
-4. inverse-claw-mcp (open source, MCP SDK + npm + ClawHub) — must enforce
-   mandatory research before booking
+1. inverse-claw-server — ✅ complete
+2. Deposit hold support (Stripe + USDC/USDT escrow) — ✅ complete
+3. inverse-claw-mcp (MCP server for AI agents) — next
 
-See CLAUDE.md for full build instructions.
+See PROTOCOL.md for the formal specification.
 See ARCHITECTURE.md for system design.

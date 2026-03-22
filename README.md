@@ -21,18 +21,16 @@ real life. The protocol handles discovery and agreement, not money.
 ## How It Works
 
 ```
-User → AI Agent → inverse-claw-mcp → inverse-claw-index (search)
-                                    → inverse-claw-server (task submission)
+User → AI Agent → inverse-claw-mcp → inverse-claw-server (discovery + task submission)
                                     → Business contacts customer directly
 ```
 
 Businesses self-host an `inverse-claw-server` which serves a manifest at
-`/.well-known/inverseclaw` on their domain. Agents can discover services
-directly from the domain, or search the index for providers by keyword and
-location.
+`/.well-known/inverseclaw` on their domain. Any agent that knows the domain
+can discover services, research the business, and submit tasks directly.
 
-For services that require it, the protocol also handles a small deposit hold
-to deter no-shows and prove agreement — the hold releases automatically on
+For services that require it, the protocol also handles a small deposit
+to deter no-shows and prove agreement — the deposit auto-releases on
 normal completion.
 
 ---
@@ -42,7 +40,6 @@ normal completion.
 | Component | What It Is | Licence |
 |-----------|-----------|---------|
 | [`inverse-claw-server`](packages/server/) | Server businesses self-host to expose their services | MIT |
-| `inverse-claw-index` | Central discovery index for searching across providers | — |
 | `inverse-claw-mcp` | MCP server for AI agents (npm package) | MIT |
 
 ---
@@ -67,11 +64,18 @@ schemas required. Agents search over your descriptions to find you.
 
 - **Free-text service descriptions** — no rigid schemas, agents search semantically
 - **No payment in the protocol** — payment is arranged directly between business and customer
-- **Optional deposit holds for trust** — businesses can require a small card hold as proof of agreement and no-show deterrent
-- **Mandatory provider research** — agents must research and surface provider reputation before booking
+- **Optional deposit holds** — businesses can require a small deposit (Stripe card hold, USDC, or USDT escrow) as proof of agreement and no-show deterrent
+- **Mandatory provider research** — agents must research and surface provider reputation before booking (server-enforced)
 - **Domain presence as trust signal** — the open web verifies providers, not us
 - **`/.well-known/inverseclaw` discovery** — agents can find services directly from a domain
-- **MIT licence** on server and MCP — businesses can adopt without restriction
+- **MIT licence** — businesses and developers can adopt without restriction
+
+---
+
+## Protocol Specification
+
+See [`PROTOCOL.md`](PROTOCOL.md) for the full protocol specification — everything
+an implementer needs to build a conformant server in any language.
 
 ---
 
@@ -79,18 +83,21 @@ schemas required. Agents search over your descriptions to find you.
 
 | File | Contents |
 |------|----------|
-| `ARCHITECTURE.md` | System design, data flows, discovery |
-| `THINKING.md` | Design decisions and trade-offs |
-| `TERMS_TEMPLATE.md` | Terms of service template |
+| [`PROTOCOL.md`](PROTOCOL.md) | Formal protocol specification (v1.1) |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | System design, data flows, discovery |
+| [`THINKING.md`](THINKING.md) | Design decisions and trade-offs |
+| [`ISSUES.md`](ISSUES.md) | Known issues and resolution log |
+| [`packages/server/README.md`](packages/server/README.md) | Server installation, configuration, API reference |
 
 ---
 
 ## Status
 
-Phase 1 (server) built. Index and MCP server in development.
+The protocol and reference server implementation are complete (134 tests passing).
+MCP server is in development.
 
 ---
 
 ## Licence
 
-The server and MCP packages are MIT licensed. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

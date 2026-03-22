@@ -17,20 +17,7 @@
 │  │  (MCP server — translates agent intent to protocol) │    │
 │  └──────────────┬──────────────────┬───────────────────┘    │
 └─────────────────┼──────────────────┼───────────────────────-┘
-                  │                  │
-          PULL (search)        PUSH (task)
-                  │                  │
-                  ▼                  │
-┌─────────────────────────────────┐  │
-│      inverse-claw-index         │  │
-│   (your hosted proprietary      │  │
-│    discovery layer)             │  │
-│                                 │  │
-│  POST /nodes/register  ◄────────┼──┼── business registers
-│  GET  /search          ◄────────┘  │
-│  PUT  /nodes/:id                   │
-│                                    │
-└─────────────────────────────────┘  │
+                                     │
                                      │ direct call
                                      ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -38,7 +25,7 @@
 │         (open source — self-hosted by business)             │
 │                                                              │
 │   GET  /.well-known/inverseclaw ◄── agent direct discovery  │
-│   GET  /services                ◄── index fetches services   │
+│   GET  /services                ◄── list available services   │
 │   POST /tasks                   ◄── agent submits task       │
 │   GET  /tasks/:id               ◄── agent polls status       │
 │                                                              │
@@ -61,33 +48,16 @@ the task moves from `pending_deposit` to `pending`.
 
 ---
 
-## Two Discovery Paths
+## Discovery
 
-Inverse Claw supports two ways for agents to find services.
-
-### Path 1: Central Index (primary)
-
-The agent doesn't know which businesses exist. It searches the index:
-
-```
-Agent → GET index.inverseclaw.io/search?q=oven+cleaning&location=M1
-      ← Returns matching nodes with descriptions, contact info, trust signals
-```
-
-This is the primary discovery mechanism.
-
-### Path 2: Direct Domain Discovery (secondary)
-
-The agent already knows a business's domain (from a Google search, a
-recommendation, a previous interaction, etc.). It checks:
+An agent that knows a business's domain (from a web search, a
+recommendation, a previous interaction, etc.) can discover its services
+directly:
 
 ```
 Agent → GET cleanright.co.uk/.well-known/inverseclaw
       ← Returns service manifest: node_id, business name, services, contact
 ```
-
-Any agent that knows a domain can discover its Inverse Claw services
-without touching the index.
 
 The `/.well-known/inverseclaw` endpoint is served automatically by
 inverse-claw-server. It returns:
@@ -131,8 +101,7 @@ Responsibilities:
 - Accept task submissions from agents
 - Allow business to push task status updates
 - Generate unique transaction IDs
-- Register with / update the index automatically
-- Optionally manage deposit lifecycle via pluggable providers (Stripe card holds, USDC escrow, etc.)
+- Optionally manage deposit lifecycle via pluggable providers (Stripe card holds, USDC/USDT escrow, etc.)
 - Auto-release deposits on task completion or business cancellation
 - Fire-and-forget webhook notifications on task events (if configured)
 - Rate limit all endpoints (100 req/min global, 10 req/min on task creation)
@@ -146,41 +115,15 @@ Does NOT:
 - Communicate with other nodes
 - Handle disputes
 - Store user personal data beyond what's in the task payload
-- Know anything about the index internals
-
----
-
-### inverse-claw-index
-**Owner:** You (hosted on Railway)
-**Licence:** Proprietary
-**Purpose:** Discovery layer — the asset you eventually sell
-
-Responsibilities:
-- Accept node registrations with domain presence verification
-- Store and serve service description search results
-- Run background reputation checks via web search
-- Surface trust signals (presence count, web presence, last seen)
-- Provide lean LLM-optimised search API
-- Handle GDPR deletion requests
-- Accept abuse reports
-
-Does NOT:
-- Route tasks (agents call nodes directly after discovery)
-- Handle payments
-- Verify service quality
-- Arbitrate disputes
-- Endorse or guarantee any provider
 
 ---
 
 ### inverse-claw-mcp
-**Owner:** You (published to npm + ClawHub)
 **Licence:** MIT
 **Purpose:** Entry point — how agents access the protocol
 
 Responsibilities:
-- Expose MCP tools for search, task submission, and status polling
-- Call the index search API
+- Expose MCP tools for discovery, task submission, and status polling
 - Call provider nodes directly for task operations
 - Surface trust signals to agents before task submission
 - Enforce mandatory provider research before task submission (protocol requirement)
@@ -197,10 +140,9 @@ Responsibilities:
 
 2. OpenClaw recognises physical task → invokes inverse-claw-mcp
 
-3. MCP calls:
-   GET index.inverseclaw.io/search?q=oven+cleaning&location=M1
+3. MCP discovers providers (via /.well-known/inverseclaw on known domains)
 
-4. Index returns 2-3 matching providers with presence URLs
+4. MCP researches the provider (checks presence URLs, reviews, reputation)
 
 5. MCP surfaces results to user:
    "I found CleanRight Ltd — they have profiles on Checkatrade and
@@ -394,7 +336,7 @@ rc _ a3f9b2 _ 20260320T143022 _ k7x9m
 ```
 
 Given any transaction ID, you can:
-- Identify which node processed it (node_id → index lookup → business contact)
+- Identify which node processed it (node_id → business)
 - Know when it was created (timestamp)
 - Route a dispute to the right business without any central database
 
@@ -426,31 +368,20 @@ Red flags to surface to user:
 
 | Actor | Can Do |
 |-------|--------|
-| Anyone | Search the index (rate limited) |
 | Anyone | Read /.well-known/inverseclaw on any domain |
-| Registered node | Update own details on index (with write API key) |
-| Registered node | Delete own registration (GDPR) |
-| Anyone | Submit abuse report |
-| You (admin) | Suspend nodes |
-| Agent | Submit tasks directly to provider nodes |
-| Provider | Push task status updates (with local business API key) |
+| Agent | Submit tasks to provider nodes (with research) |
+| Agent | Poll task status |
+| Agent | Confirm deposits |
+| Provider | Push task status updates (with business API key) |
+| Provider | Capture or release deposits (with business API key) |
+| Provider | Delete task data (with business API key) |
 
 ### Attack surfaces and mitigations
 
-**Fake node registration:**
-- Domain presence check — node_id must appear on a public URL they control
-- Contact email domain must match presence URL domain
-- Manual review window (pending state, 24-48 hours)
-
-**Spamming the index:**
-- Rate limiting by IP (100/hour for search)
-- Write operations require write API key scoped to node_id
-
 **Scam providers:**
-- Background reputation checks via web search
-- Abuse reporting endpoint
-- You retain right to suspend any node at any time (in terms)
-- Trust signals surfaced to agents — not hidden
+- Mandatory research requirement — agents must check presence URLs before booking
+- Trust signals (presence URLs, web reputation) surfaced to users before commitment
+- Deposit holds deter fake bookings from the other direction
 
 **Task spam to nodes:**
 - Nodes can implement their own rate limiting
@@ -471,7 +402,7 @@ business's own rate limiting).
 ### Mandatory research as scam protection
 
 The protocol requires agents to research providers before booking (enforced
-at the MCP level). This means users always see trust signals before
+at the server level). This means users always see trust signals before
 committing. Combined with the deposit hold, both sides are protected:
 businesses from trolls (via deposit), users from scams (via mandatory
 research).
@@ -490,12 +421,6 @@ docker run -d \
   -e PRESENCE_URLS="https://checkatrade.com/trades/cleanright,https://facebook.com/cleanrightltd" \
   inverseclaw/server:latest
 ```
-
-### inverse-claw-index (you deploy)
-- Railway (recommended) — auto-deploys from GitHub
-- Supabase for database
-- Environment variables set in Railway dashboard
-- Custom domain: index.inverseclaw.io
 
 ### inverse-claw-mcp (agents install)
 ```bash

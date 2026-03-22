@@ -452,55 +452,52 @@ Send testnet USDC to your wallet, then use the tx hash to confirm the deposit. W
 
 ### Using Other EVM Chains
 
-The USDC deposit provider works on any EVM chain, not just Base. The `EvmUsdcProvider` class comes pre-configured for five chains:
+### Supported tokens and chains
 
-| Chain | Chain ID | Provider type (auto-generated) |
-|-------|----------|-------------------------------|
-| Base | 8453 | `usdc_base` |
-| Ethereum | 1 | `usdc_ethereum` |
-| Arbitrum | 42161 | `usdc_arbitrum_one` |
-| Optimism | 10 | `usdc_op_mainnet` |
-| Polygon | 137 | `usdc_polygon` |
+The `EvmStablecoinProvider` supports both **USDC** and **USDT** on any EVM chain. Pre-configured for five chains:
 
-To accept USDC on a different chain, register the provider in `src/index.ts`:
+| Chain | Chain ID | USDC provider | USDT provider |
+|-------|----------|--------------|--------------|
+| Base | 8453 | `usdc_base` | `usdt_base` |
+| Ethereum | 1 | `usdc_ethereum` | `usdt_ethereum` |
+| Arbitrum | 42161 | `usdc_arbitrum_one` | `usdt_arbitrum_one` |
+| Optimism | 10 | `usdc_op_mainnet` | `usdt_op_mainnet` |
+| Polygon | 137 | `usdc_polygon` | `usdt_polygon` |
+
+Accept any combination in `services.yaml`:
+
+```yaml
+deposit:
+  amount_cents: 1500
+  providers: [stripe, usdc_base, usdt_base]   # card, USDC, or USDT
+```
+
+### Adding other chains or tokens
+
+To accept a token on a chain not in the pre-configured list:
 
 ```typescript
-import { EvmUsdcProvider } from './providers/usdc.js';
+import { EvmStablecoinProvider } from './providers/usdc.js';
 
-// Example: accept USDC on Arbitrum
-registerProvider(new EvmUsdcProvider({
+// USDC on Avalanche (custom chain)
+registerProvider(new EvmStablecoinProvider({
+  chainId: 43114,
+  walletAddress: process.env.USDC_WALLET_ADDRESS!,
+  token: 'usdc',
+  tokenAddress: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
+  rpcUrl: 'https://api.avax.network/ext/bc/C/rpc',
+  providerType: 'usdc_avalanche',
+}));
+
+// USDT on Arbitrum (pre-configured, just register it)
+registerProvider(new EvmStablecoinProvider({
   chainId: 42161,
   walletAddress: process.env.USDC_WALLET_ADDRESS!,
+  token: 'usdt',
 }));
 ```
 
-Then reference it in `services.yaml`:
-
-```yaml
-deposit:
-  amount_cents: 1500
-  providers: [stripe, usdc_arbitrum_one]
-```
-
-For chains not in the pre-configured list, provide the USDC contract address and RPC URL:
-
-```typescript
-registerProvider(new EvmUsdcProvider({
-  chainId: 43114,  // Avalanche C-Chain
-  walletAddress: process.env.USDC_WALLET_ADDRESS!,
-  usdcAddress: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
-  rpcUrl: 'https://api.avax.network/ext/bc/C/rpc',
-  providerType: 'usdc_avalanche',  // your choice of name
-}));
-```
-
-```yaml
-deposit:
-  amount_cents: 1500
-  providers: [usdc_avalanche]
-```
-
-The provider handles USDC contract address lookup, RPC connection, and on-chain transaction verification automatically. All EVM chains use the same ERC20 Transfer event format, so the verification logic is identical.
+All ERC20 stablecoins use the same Transfer event format and 6 decimals, so the verification logic is identical for USDC, USDT, or any other ERC20 token.
 
 ---
 
@@ -640,7 +637,8 @@ Agent submits a service request on behalf of a customer. The business then conta
     },
     "usdc_base": {
       "wallet_address": "0x1234...",
-      "amount_usdc": "19.05",
+      "amount": "15.00",
+      "token": "usdc",
       "chain_id": 8453,
       "deposit_reference": "dep_abc123...",
       "token_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
@@ -1022,8 +1020,9 @@ npm run test:watch   # Run tests in watch mode (re-runs on file changes)
 | `deposit-schemas.test.ts` | 13 | Deposit state machine, ConfirmDepositBody validation |
 | `deposit-services.test.ts` | 9 | Extended service schema with deposit fields |
 | `research.test.ts` | 5 | Research requirement enforcement |
+| `stablecoin-provider.test.ts` | 13 | USDC/USDT token selection, chain support, amount conversion |
 
-**Total: 121 tests**
+**Total: 134 tests**
 
 Deposit tests use a mocked Stripe client — no real Stripe API calls are made during testing.
 

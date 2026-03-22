@@ -293,7 +293,7 @@ The protocol is provider-agnostic. Each deposit provider implements:
 - **Capture** — business takes the deposit (customer no-show)
 - **Release** — deposit returned to customer (normal completion)
 
-Built-in providers: `stripe` (card pre-auth holds), `usdc_base` (USDC escrow on Base L2). The protocol supports any number of providers.
+Built-in providers: `stripe` (card pre-auth holds), `usdc_base` (USDC on Base L2), `usdt_base` (USDT on Base L2). Both USDC and USDT are supported on Base, Ethereum, Arbitrum, Optimism, and Polygon. The protocol supports any number of providers.
 
 ### 6.2 Deposit Confirmation
 

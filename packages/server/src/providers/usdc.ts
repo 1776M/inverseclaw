@@ -14,7 +14,9 @@ import { randomBytes } from 'node:crypto';
 import type { DepositProvider, CreateDepositResult } from '../depositProvider.js';
 import { ESCROW_ABI, EscrowStatus } from '../escrowAbi.js';
 
-const USDC_DECIMALS = 6;
+const STABLECOIN_DECIMALS = 6; // Both USDC and USDT use 6 decimals
+
+export type StablecoinToken = 'usdc' | 'usdt';
 
 /** Known USDC contract addresses per chain ID */
 const USDC_ADDRESSES: Record<number, Address> = {
@@ -23,6 +25,21 @@ const USDC_ADDRESSES: Record<number, Address> = {
   [arbitrum.id]: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',  // Arbitrum
   [optimism.id]: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',  // Optimism
   [polygon.id]:  '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',  // Polygon
+};
+
+/** Known USDT contract addresses per chain ID */
+const USDT_ADDRESSES: Record<number, Address> = {
+  [base.id]:     '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',  // Base
+  [mainnet.id]:  '0xdAC17F958D2ee523a2206206994597C13D831ec7',  // Ethereum
+  [arbitrum.id]: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',  // Arbitrum
+  [optimism.id]: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58',  // Optimism
+  [polygon.id]:  '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',  // Polygon
+};
+
+/** Token addresses by token name */
+const TOKEN_ADDRESSES: Record<StablecoinToken, Record<number, Address>> = {
+  usdc: USDC_ADDRESSES,
+  usdt: USDT_ADDRESSES,
 };
 
 /** Known chain objects by ID for viem */
@@ -48,15 +65,17 @@ const ESCROW_ADDRESSES: Record<number, Address> = {
   // Populated after deployment — leave empty until contracts are deployed
 };
 
-export interface EvmUsdcConfig {
+export interface EvmStablecoinConfig {
   /** Chain ID (e.g. 8453 for Base, 1 for Ethereum, 42161 for Arbitrum) */
   chainId: number;
   /** Business wallet address to receive deposits */
   walletAddress: string;
+  /** Which stablecoin to use (optional, default 'usdc') */
+  token?: StablecoinToken;
   /** RPC endpoint URL (optional, has defaults for known chains) */
   rpcUrl?: string;
-  /** USDC contract address (optional, auto-detected for known chains) */
-  usdcAddress?: string;
+  /** Token contract address (optional, auto-detected for known tokens and chains) */
+  tokenAddress?: string;
   /** Provider type identifier (optional, auto-generated as usdc_{chain_name}) */
   providerType?: string;
   /** Escrow contract address (optional, auto-detected for known chains once deployed) */
@@ -66,7 +85,10 @@ export interface EvmUsdcConfig {
 }
 
 /**
- * EVM USDC deposit provider.
+ * EVM stablecoin deposit provider (USDC / USDT).
+ *
+ * Works on any EVM chain with USDC or USDT. Pre-configured for Base,
+ * Ethereum, Arbitrum, Optimism, and Polygon.
  *
  * Two modes:
  * - **Escrow mode** (recommended): Deposits go to the InverseClawEscrow contract.
@@ -77,27 +99,29 @@ export interface EvmUsdcConfig {
  *   Non-refundable. Capture/release are no-ops. Used when escrow is not configured.
  *   A warning is logged at startup.
  */
-export class EvmUsdcProvider implements DepositProvider {
+export class EvmStablecoinProvider implements DepositProvider {
   readonly type: string;
   readonly escrowMode: boolean;
   private walletAddress: Address;
   private rpcUrl: string;
-  private usdcAddress: Address;
+  private tokenAddress: Address;
+  private tokenName: StablecoinToken;
   private chainId: number;
   private chain: Chain;
   private escrowAddress: Address | null;
   private businessPrivateKey: string | null;
 
-  /** Track expected USDC amounts per deposit reference */
+  /** Track expected amounts per deposit reference */
   private expectedAmounts = new Map<string, bigint>();
   /** Track used tx hashes to prevent replay attacks */
   private usedTxHashes = new Set<string>();
   /** Map deposit reference string → bytes32 hash (for escrow contract calls) */
   private depositIdToBytes32 = new Map<string, `0x${string}`>();
 
-  constructor(config: EvmUsdcConfig) {
+  constructor(config: EvmStablecoinConfig) {
     this.chainId = config.chainId;
     this.walletAddress = config.walletAddress as Address;
+    this.tokenName = config.token ?? 'usdc';
 
     // Resolve chain object
     const chain = CHAIN_OBJECTS[config.chainId];
@@ -108,20 +132,22 @@ export class EvmUsdcProvider implements DepositProvider {
     }
     this.chain = chain ?? { id: config.chainId, name: `Chain ${config.chainId}` } as Chain;
 
-    // Resolve USDC address
-    const usdcAddr = config.usdcAddress ?? USDC_ADDRESSES[config.chainId];
-    if (!usdcAddr) {
+    // Resolve token address
+    const knownAddresses = TOKEN_ADDRESSES[this.tokenName] ?? {};
+    const tokenAddr = config.tokenAddress ?? knownAddresses[config.chainId];
+    if (!tokenAddr) {
       throw new Error(
-        `No known USDC address for chain ID ${config.chainId}. Provide usdcAddress.`
+        `No known ${this.tokenName.toUpperCase()} address for chain ID ${config.chainId}. Provide tokenAddress.`
       );
     }
-    this.usdcAddress = usdcAddr as Address;
+    this.tokenAddress = tokenAddr as Address;
 
     // Resolve RPC URL
     this.rpcUrl = config.rpcUrl ?? DEFAULT_RPC_URLS[config.chainId] ?? '';
 
     // Resolve provider type name
-    this.type = config.providerType ?? `usdc_${(this.chain.name ?? String(config.chainId)).toLowerCase().replace(/\s+/g, '_')}`;
+    const chainName = (this.chain.name ?? String(config.chainId)).toLowerCase().replace(/\s+/g, '_');
+    this.type = config.providerType ?? `${this.tokenName}_${chainName}`;
 
     // Resolve escrow config
     const escrowAddr = config.escrowAddress ?? ESCROW_ADDRESSES[config.chainId];
@@ -148,7 +174,7 @@ export class EvmUsdcProvider implements DepositProvider {
     const amountUsdc = (params.amountCents / 100).toFixed(2);
 
     // Store expected amount for verification (USDC has 6 decimals)
-    const expectedRaw = Math.round(parseFloat(amountUsdc) * 10 ** USDC_DECIMALS);
+    const expectedRaw = Math.round(parseFloat(amountUsdc) * 10 ** STABLECOIN_DECIMALS);
     const minimumAmount = BigInt(expectedRaw);
     this.expectedAmounts.set(depositReference, minimumAmount);
 
@@ -164,11 +190,12 @@ export class EvmUsdcProvider implements DepositProvider {
           mode: 'escrow',
           escrow_address: this.escrowAddress,
           business_wallet: this.walletAddress,
-          amount_usdc: amountUsdc,
+          amount: amountUsdc,
+          token: this.tokenName,
           chain_id: this.chainId,
           deposit_reference: depositReference,
           deposit_id_bytes32: depositIdBytes32,
-          token_address: this.usdcAddress,
+          token_address: this.tokenAddress,
         },
       };
     }
@@ -180,10 +207,11 @@ export class EvmUsdcProvider implements DepositProvider {
       clientData: {
         mode: 'direct_transfer',
         wallet_address: this.walletAddress,
-        amount_usdc: amountUsdc,
+        amount: amountUsdc,
+        token: this.tokenName,
         chain_id: this.chainId,
         deposit_reference: depositReference,
-        token_address: this.usdcAddress,
+        token_address: this.tokenAddress,
       },
     };
   }
@@ -291,7 +319,7 @@ export class EvmUsdcProvider implements DepositProvider {
     normalizedHash: string
   ): boolean {
     for (const log of logs) {
-      if (log.address.toLowerCase() !== this.usdcAddress.toLowerCase()) continue;
+      if (log.address.toLowerCase() !== this.tokenAddress.toLowerCase()) continue;
 
       // ERC20 Transfer: topics[2] = to address, data = value
       if (!log.topics[2]) continue;
@@ -340,24 +368,20 @@ export class EvmUsdcProvider implements DepositProvider {
 
 }
 
-/**
- * Convenience factory for Base L2 (the default/recommended chain).
- * Kept for backward compatibility with existing config.
- */
-export class UsdcBaseDepositProvider extends EvmUsdcProvider {
-  constructor(
-    walletAddress: string,
-    rpcUrl?: string,
-    escrowAddress?: string,
-    businessPrivateKey?: string
-  ) {
-    super({
-      chainId: base.id,
-      walletAddress,
-      rpcUrl,
-      providerType: 'usdc_base',
-      escrowAddress,
-      businessPrivateKey,
-    });
+/** Convenience: USDC on Base L2 */
+export class UsdcBaseDepositProvider extends EvmStablecoinProvider {
+  constructor(walletAddress: string, rpcUrl?: string, escrowAddress?: string, businessPrivateKey?: string) {
+    super({ chainId: base.id, walletAddress, rpcUrl, token: 'usdc', providerType: 'usdc_base', escrowAddress, businessPrivateKey });
   }
 }
+
+/** Convenience: USDT on Base L2 */
+export class UsdtBaseDepositProvider extends EvmStablecoinProvider {
+  constructor(walletAddress: string, rpcUrl?: string, escrowAddress?: string, businessPrivateKey?: string) {
+    super({ chainId: base.id, walletAddress, rpcUrl, token: 'usdt', providerType: 'usdt_base', escrowAddress, businessPrivateKey });
+  }
+}
+
+// Backward compatibility aliases
+export { EvmStablecoinProvider as EvmUsdcProvider };
+export type { EvmStablecoinConfig as EvmUsdcConfig };

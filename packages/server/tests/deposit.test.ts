@@ -194,7 +194,8 @@ describe('POST /tasks (multi-provider deposit)', () => {
       '0xabc123wallet00000000000000000000000000000'
     );
     expect(body.deposit_providers.usdc_base.chain_id).toBe(8453);
-    expect(body.deposit_providers.usdc_base.amount_usdc).toBeDefined();
+    expect(body.deposit_providers.usdc_base.amount).toBeDefined();
+    expect(body.deposit_providers.usdc_base.token).toBe('usdc');
   });
 
   it('should return pending with no deposit for non-deposit service', async () => {
